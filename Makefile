@@ -54,13 +54,14 @@ USB_DIR = $(DIST_DIR)/usb
 # Disk images
 # ============================================================
 
-RAW_IMAGE = $(KVM_DIR)/system.raw
+KVM_RAW_IMAGE = $(KVM_DIR)/system.raw
 QCOW2_IMAGE = $(KVM_DIR)/system.qcow2
+
+USB_IMAGE = $(USB_DIR)/system.img
 
 IMAGE_SIZE_MB = 64
 
 ESP_OFFSET_SECTORS = 2048
-SECTOR_SIZE = 512
 ESP_OFFSET_BYTES = 1048576
 
 
@@ -131,8 +132,6 @@ run: debug
 
 # ============================================================
 # KVM package
-#
-# EFIファイル + OVMF
 # ============================================================
 
 kvm: $(TARGET)
@@ -155,16 +154,6 @@ kvm: $(TARGET)
 
 # ============================================================
 # KVM QCOW2 image
-#
-# system.raw
-#   GPT
-#   EFI System Partition
-#   FAT32
-#   EFI/BOOT/BOOTX64.EFI
-#
-# ↓
-#
-# system.qcow2
 # ============================================================
 
 kvm-qcow2: $(TARGET)
@@ -177,73 +166,56 @@ kvm-qcow2: $(TARGET)
 	cp "$(OVMF_VARS)" \
 		$(KVM_DIR)/OVMF_VARS.fd
 
-	# --------------------------------------------------------
 	# 64MB RAW disk
-	# --------------------------------------------------------
-
 	dd \
 		if=/dev/zero \
-		of=$(RAW_IMAGE) \
+		of=$(KVM_RAW_IMAGE) \
 		bs=1M \
 		count=$(IMAGE_SIZE_MB)
 
-	# --------------------------------------------------------
-	# GPT + EFI System Partition
-	# --------------------------------------------------------
-
-	parted -s $(RAW_IMAGE) \
+	# GPT
+	parted -s $(KVM_RAW_IMAGE) \
 		mklabel gpt
 
-	parted -s $(RAW_IMAGE) \
+	# EFI System Partition
+	parted -s $(KVM_RAW_IMAGE) \
 		mkpart ESP fat32 1MiB 100%
 
-	parted -s $(RAW_IMAGE) \
+	parted -s $(KVM_RAW_IMAGE) \
 		set 1 esp on
 
-	# --------------------------------------------------------
-	# FAT32 filesystem
-	#
-	# Partition begins at 1MiB
-	# --------------------------------------------------------
-
+	# FAT32
 	mkfs.fat \
 		-F 32 \
 		--offset=$(ESP_OFFSET_SECTORS) \
-		$(RAW_IMAGE)
+		$(KVM_RAW_IMAGE)
 
-	# --------------------------------------------------------
-	# Copy BOOTX64.EFI using mtools
-	# --------------------------------------------------------
-
+	# EFI directory
 	mmd \
-		-i $(RAW_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		-i $(KVM_RAW_IMAGE)@@$(ESP_OFFSET_BYTES) \
 		::/EFI
 
 	mmd \
-		-i $(RAW_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		-i $(KVM_RAW_IMAGE)@@$(ESP_OFFSET_BYTES) \
 		::/EFI/BOOT
 
+	# BOOTX64.EFI
 	mcopy \
-		-i $(RAW_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		-i $(KVM_RAW_IMAGE)@@$(ESP_OFFSET_BYTES) \
 		$(TARGET) \
 		::/EFI/BOOT/BOOTX64.EFI
 
-	# --------------------------------------------------------
 	# RAW -> QCOW2
-	# --------------------------------------------------------
-
 	qemu-img convert \
 		-f raw \
 		-O qcow2 \
-		$(RAW_IMAGE) \
+		$(KVM_RAW_IMAGE) \
 		$(QCOW2_IMAGE)
 
-	# RAWは配布不要
-	rm -f $(RAW_IMAGE)
+	rm -f $(KVM_RAW_IMAGE)
 
 	@echo
 	@echo "QCOW2 package created:"
-	@echo
 	@ls -lh \
 		$(QCOW2_IMAGE) \
 		$(KVM_DIR)/OVMF_CODE.fd \
@@ -251,20 +223,65 @@ kvm-qcow2: $(TARGET)
 
 
 # ============================================================
-# USB files
+# USB boot image
+#
+# Rufus等でUSBメモリへ書き込むRAWディスクイメージ
+#
+# system.img
+#   GPT
+#   EFI System Partition
+#     FAT32
+#       EFI/
+#         BOOT/
+#           BOOTX64.EFI
 # ============================================================
 
 usb: $(TARGET)
 	rm -rf $(USB_DIR)
+	mkdir -p $(USB_DIR)
 
-	mkdir -p $(USB_DIR)/EFI/BOOT
+	# 64MB RAW USB image
+	dd \
+		if=/dev/zero \
+		of=$(USB_IMAGE) \
+		bs=1M \
+		count=$(IMAGE_SIZE_MB)
 
-	cp $(TARGET) \
-		$(USB_DIR)/EFI/BOOT/BOOTX64.EFI
+	# GPT
+	parted -s $(USB_IMAGE) \
+		mklabel gpt
+
+	# EFI System Partition
+	parted -s $(USB_IMAGE) \
+		mkpart ESP fat32 1MiB 100%
+
+	parted -s $(USB_IMAGE) \
+		set 1 esp on
+
+	# FAT32
+	mkfs.fat \
+		-F 32 \
+		--offset=$(ESP_OFFSET_SECTORS) \
+		$(USB_IMAGE)
+
+	# EFI directory
+	mmd \
+		-i $(USB_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		::/EFI
+
+	mmd \
+		-i $(USB_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		::/EFI/BOOT
+
+	# BOOTX64.EFI
+	mcopy \
+		-i $(USB_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		$(TARGET) \
+		::/EFI/BOOT/BOOTX64.EFI
 
 	@echo
-	@echo "USB package created:"
-	@find $(USB_DIR) -type f -print
+	@echo "USB boot image created:"
+	@ls -lh $(USB_IMAGE)
 
 
 # ============================================================
@@ -313,7 +330,7 @@ rkq: rebuild
 
 
 # ============================================================
-# Rebuild + USB
+# Rebuild + USB image
 # ============================================================
 
 ru: rebuild
