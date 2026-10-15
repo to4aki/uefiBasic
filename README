@@ -1,0 +1,23 @@
+                 WaitForEvent
+                      │
+        ┌─────────────┼──────────────┐
+        │             │              │
+        ▼             ▼              ▼
+ AbsolutePointer    Keyboard        Timer
+        │             │             60Hz
+        ▼             ▼              │
+マウス状態更新     キー状態処理        │
+        │             │              ▼
+        │             │        system_update()
+        │             │              │
+        │             │              ▼
+        │             │        system_render()
+        │             │              │
+        │             │              ▼
+        │             │      system_end_frame()
+        │             │              │
+        └─────────────┴──────────────┘
+                      │
+                      ▼
+                 WaitForEvent
+

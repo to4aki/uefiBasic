@@ -1,0 +1,9 @@
+*.o
+*.so
+*.EFI
+OVMF_VARS*.fd
+
+esp/
+dist/
+poi/
+

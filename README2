@@ -1,0 +1,183 @@
+EDK2 / OVMF ゼロからのビルド手順
+Ubuntu 24.04
+========================================
+
+1. 必要パッケージをインストール
+
+sudo apt update
+
+sudo apt install \
+    build-essential \
+    uuid-dev \
+    acpica-tools \
+    nasm \
+    python3-setuptools
+
+
+2. EDK2を取得
+
+cd ~
+
+git clone --recurse-submodules https://github.com/tianocore/edk2.git
+
+cd ~/edk2
+
+
+3. VirtioInputDxeが組み込まれていることを確認
+
+grep -n "VirtioInput.inf" \
+    OvmfPkg/OvmfPkgX64.dsc \
+    OvmfPkg/OvmfPkgX64.fdf
+
+
+以下のような行が存在すれば変更不要。
+
+OvmfPkg/OvmfPkgX64.dsc:
+  OvmfPkg/VirtioInputDxe/VirtioInput.inf
+
+OvmfPkg/OvmfPkgX64.fdf:
+INF  OvmfPkg/VirtioInputDxe/VirtioInput.inf
+
+
+4. VirtioTabletが含まれていることを確認
+
+grep -n "VirtioTablet.c" \
+    OvmfPkg/VirtioInputDxe/VirtioInput.inf
+
+
+以下の行があれば変更不要。
+
+  VirtioTablet.c
+
+
+5. BaseToolsをビルド
+
+cd ~/edk2
+
+make -C BaseTools
+
+
+6. EDK2ビルド環境を設定
+
+source edksetup.sh
+
+
+7. OVMF X64をビルド
+
+build \
+    -a X64 \
+    -t GCC \
+    -p OvmfPkg/OvmfPkgX64.dsc \
+    -b DEBUG
+
+
+注意:
+
+現在のEDK2では
+
+    -t GCC5
+
+ではなく
+
+    -t GCC
+
+を使用する。
+
+
+8. ビルド成功確認
+
+最後に
+
+    - Done -
+
+と表示されれば成功。
+
+
+9. 生成されたOVMF
+
+~/edk2/Build/OvmfX64/DEBUG_GCC/FV/OVMF.fd
+
+~/edk2/Build/OvmfX64/DEBUG_GCC/FV/OVMF_CODE.fd
+
+~/edk2/Build/OvmfX64/DEBUG_GCC/FV/OVMF_VARS.fd
+
+
+確認:
+
+ls -lh ~/edk2/Build/OvmfX64/DEBUG_GCC/FV/OVMF*.fd
+
+
+10. QEMUで使用
+
+UEFI GUIのマウス入力には
+
+    -device virtio-tablet-pci
+
+を使用する。
+
+
+例:
+
+cp \
+    ~/edk2/Build/OvmfX64/DEBUG_GCC/FV/OVMF_VARS.fd \
+    OVMF_VARS.fd
+
+
+qemu-system-x86_64 \
+    -device virtio-tablet-pci \
+    -drive if=pflash,format=raw,readonly=on,file=$HOME/edk2/Build/OvmfX64/DEBUG_GCC/FV/OVMF_CODE.fd \
+    -drive if=pflash,format=raw,file=OVMF_VARS.fd \
+    -drive format=raw,file=fat:rw:esp
+
+
+========================================
+2回目以降の再ビルド
+========================================
+
+cd ~/edk2
+
+source edksetup.sh
+
+build \
+    -a X64 \
+    -t GCC \
+    -p OvmfPkg/OvmfPkgX64.dsc \
+    -b DEBUG
+
+
+========================================
+重要
+========================================
+
+今回最終的に動作した構成:
+
+QEMU
+    -device virtio-tablet-pci
+
+        ↓
+
+自前ビルドした最新OVMF
+
+        ↓
+
+OvmfPkg/VirtioInputDxe/VirtioInput.inf
+
+        ↓
+
+OvmfPkg/VirtioInputDxe/VirtioTablet.c
+
+        ↓
+
+EFI_ABSOLUTE_POINTER_PROTOCOL
+
+
+途中で追加した以下の2つは、
+最終的な virtio-tablet-pci 構成には不要。
+
+MdeModulePkg/Bus/Usb/UsbMouseDxe/UsbMouseDxe.inf
+
+MdeModulePkg/Bus/Usb/UsbMouseAbsolutePointerDxe/UsbMouseAbsolutePointerDxe.inf
+
+
+したがって、EDK2を新しくcloneした場合、
+上記2つのINF追加作業は行わない。
