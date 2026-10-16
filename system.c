@@ -12,35 +12,6 @@ static UINT64 frame_count = 0;
 
 
 /* ==========================================================
- * Initialize
- * ========================================================== */
-
-void system_init(void)
-{
-    frame_count = 0;
-
-
-    textvram_init();
-
-
-    textvram_put_string(
-        0,
-        0,
-        "UEFI SYSTEM",
-        0x0000FF00,
-        0x00000000);
-
-
-    textvram_put_string(
-        0,
-        2,
-        "TEXT VRAM 80X25",
-        0x00FFFFFF,
-        0x00000000);
-}
-
-
-/* ==========================================================
  * GUI
  * ========================================================== */
 
@@ -79,26 +50,165 @@ static BOOLEAN point_in_button(
 
 
 /* ==========================================================
+ * Mouse cursor
+ * ========================================================== */
+
+static void draw_cursor(
+    INTN x,
+    INTN y,
+    UINT32 color)
+{
+    graphics_fill_rect(
+        x - 10,
+        y - 1,
+        21,
+        3,
+        color
+    );
+
+
+    graphics_fill_rect(
+        x - 1,
+        y - 10,
+        3,
+        21,
+        color
+    );
+}
+
+
+/* ==========================================================
+ * Initialize
+ * ========================================================== */
+
+void system_init(void)
+{
+    frame_count = 0;
+
+
+    textvram_init();
+
+
+    textvram_set_color(
+        0x0000FF00,
+        0x00000000
+    );
+
+
+    textvram_print(
+        "UEFI SYSTEM\n"
+    );
+
+
+    textvram_print(
+        "\n"
+    );
+
+
+    textvram_set_color(
+        0x00FFFFFF,
+        0x00000000
+    );
+
+
+    textvram_print(
+        "TEXT VRAM 80X25\n"
+    );
+
+
+    textvram_print(
+        "READY> "
+    );
+}
+
+
+/* ==========================================================
+ * Keyboard processing
+ * ========================================================== */
+
+static void process_keyboard(void)
+{
+    INPUT_KEY_EVENT key;
+
+    CHAR16 ch;
+
+
+    /*
+     * Process every key currently queued.
+     */
+
+    while (input_get_key(&key))
+    {
+        ch =
+            key.unicode;
+
+
+        /*
+         * Enter
+         */
+
+        if (ch == '\r')
+        {
+            textvram_putc(
+                '\n'
+            );
+
+            continue;
+        }
+
+
+        /*
+         * Backspace
+         */
+
+        if (ch == '\b')
+        {
+            textvram_putc(
+                '\b'
+            );
+
+            continue;
+        }
+
+
+        /*
+         * Printable ASCII
+         */
+
+        if (ch >= 0x20 &&
+            ch <= 0x7E)
+        {
+            textvram_putc(
+                (UINT8)ch
+            );
+        }
+    }
+}
+
+
+/* ==========================================================
  * Update
  * ========================================================== */
 
 void system_update(void)
 {
-    const INPUT_STATE *input =
+    const INPUT_STATE *input;
+
+
+    input =
         input_state();
 
 
     /*
-     * 今後ここへ
-     *
-     * CPU実行
-     * TEXT VRAM更新
-     * UI状態更新
-     * デバイス更新
-     *
-     * を追加する。
+     * Keyboard
      */
 
+    process_keyboard();
+
+
+    /*
+     * GUI
+     */
 
     if (input->mouse_pressed)
     {
@@ -118,31 +228,6 @@ void system_update(void)
 
 
 /* ==========================================================
- * Cursor
- * ========================================================== */
-
-static void draw_cursor(
-    INTN x,
-    INTN y,
-    UINT32 color)
-{
-    graphics_fill_rect(
-        x - 10,
-        y - 1,
-        21,
-        3,
-        color);
-
-    graphics_fill_rect(
-        x - 1,
-        y - 10,
-        3,
-        21,
-        color);
-}
-
-
-/* ==========================================================
  * Render
  * ========================================================== */
 
@@ -157,36 +242,30 @@ void system_render(void)
     UINT32 button_color;
     UINT32 cursor_color;
 
-    const INPUT_STATE *input =
+    const INPUT_STATE *input;
+
+
+    input =
         input_state();
 
 
     /*
-     * ======================================================
-     * Graphics background
-     * ======================================================
+     * Background
      */
 
     graphics_clear(
-        0x00101020);
+        0x00101020
+    );
 
 
     /*
-     * ======================================================
      * TEXT VRAM
-     *
-     * 80 x 25
-     * 8 x 16 font
-     *
-     * 640 x 400 logical display
-     *
-     * GOP画面中央へ配置する。
-     * ======================================================
      */
 
     text_x =
         ((INTN)graphics_width() -
          TEXT_WIDTH) / 2;
+
 
     text_y =
         ((INTN)graphics_height() -
@@ -195,18 +274,18 @@ void system_render(void)
 
     textvram_render(
         text_x,
-        text_y);
+        text_y
+    );
 
 
     /*
-     * ======================================================
      * GUI button
-     * ======================================================
      */
 
     bx =
         ((INTN)graphics_width() -
          BUTTON_W) / 2;
+
 
     by =
         ((INTN)graphics_height() -
@@ -241,13 +320,12 @@ void system_render(void)
         by,
         BUTTON_W,
         BUTTON_H,
-        button_color);
+        button_color
+    );
 
 
     /*
-     * ======================================================
-     * Cursor
-     * ======================================================
+     * Mouse cursor
      */
 
     if (input->mouse_down)
@@ -265,17 +343,17 @@ void system_render(void)
     draw_cursor(
         input->mouse_x,
         input->mouse_y,
-        cursor_color);
+        cursor_color
+    );
 
 
     /*
-     * ======================================================
      * Present
-     * ======================================================
      */
 
     graphics_present();
 }
+
 
 /* ==========================================================
  * Frame count
@@ -285,5 +363,4 @@ UINT64 system_frame_count(void)
 {
     return frame_count;
 }
-
 

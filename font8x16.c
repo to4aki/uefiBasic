@@ -1,150 +1,71 @@
 #include "font8x16.h"
+#include "font8x8_basic.h"
 
 
-static const UINT8 blank[16] =
-{
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00
-};
+static UINT8 glyph16[FONT8X16_HEIGHT];
 
 
-/*
- * 8x8フォントを縦2倍して8x16として使用する。
- */
-
-static const UINT8 font8x8[128][8] =
-{
-    [' '] =
-    {
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00
-    },
-
-    ['0'] =
-    {
-        0x3C, 0x66, 0x6E, 0x76,
-        0x66, 0x66, 0x3C, 0x00
-    },
-
-    ['1'] =
-    {
-        0x18, 0x38, 0x18, 0x18,
-        0x18, 0x18, 0x7E, 0x00
-    },
-
-    ['2'] =
-    {
-        0x3C, 0x66, 0x06, 0x0C,
-        0x30, 0x60, 0x7E, 0x00
-    },
-
-    ['5'] =
-    {
-        0x7E, 0x60, 0x7C, 0x06,
-        0x06, 0x66, 0x3C, 0x00
-    },
-
-    ['8'] =
-    {
-        0x3C, 0x66, 0x66, 0x3C,
-        0x66, 0x66, 0x3C, 0x00
-    },
-
-    ['A'] =
-    {
-        0x18, 0x3C, 0x66, 0x66,
-        0x7E, 0x66, 0x66, 0x00
-    },
-
-    ['E'] =
-    {
-        0x7E, 0x60, 0x60, 0x7C,
-        0x60, 0x60, 0x7E, 0x00
-    },
-
-    ['F'] =
-    {
-        0x7E, 0x60, 0x60, 0x7C,
-        0x60, 0x60, 0x60, 0x00
-    },
-
-    ['I'] =
-    {
-        0x3C, 0x18, 0x18, 0x18,
-        0x18, 0x18, 0x3C, 0x00
-    },
-
-    ['M'] =
-    {
-        0x63, 0x77, 0x7F, 0x6B,
-        0x63, 0x63, 0x63, 0x00
-    },
-
-    ['R'] =
-    {
-        0x7C, 0x66, 0x66, 0x7C,
-        0x6C, 0x66, 0x66, 0x00
-    },
-
-    ['S'] =
-    {
-        0x3C, 0x66, 0x60, 0x3C,
-        0x06, 0x66, 0x3C, 0x00
-    },
-
-    ['T'] =
-    {
-        0x7E, 0x18, 0x18, 0x18,
-        0x18, 0x18, 0x18, 0x00
-    },
-
-    ['U'] =
-    {
-        0x66, 0x66, 0x66, 0x66,
-        0x66, 0x66, 0x3C, 0x00
-    },
-
-    ['V'] =
-    {
-        0x66, 0x66, 0x66, 0x66,
-        0x66, 0x3C, 0x18, 0x00
-    },
-
-    ['Y'] =
-    {
-        0x66, 0x66, 0x66, 0x3C,
-        0x18, 0x18, 0x18, 0x00
-    },
-
-    ['X'] =
-    {
-        0x66, 0x66, 0x3C, 0x18,
-        0x3C, 0x66, 0x66, 0x00
-    }
-};
-
-
-static UINT8 glyph16[16];
-
-
-const UINT8 *font8x16_get(UINT8 code)
+const UINT8 *font8x16_get(
+    UINT8 code)
 {
     UINTN y;
+    UINT8 row;
 
 
-    if (code >= 128)
-        return blank;
+    /*
+     * font8x8_basic contains U+0000 - U+007F.
+     */
 
+    if (code >= 0x80)
+    {
+        code = ' ';
+    }
+
+
+    /*
+     * Convert 8x8 to 8x16.
+     *
+     * Each 8 pixel row is repeated twice.
+     *
+     * font8x8_basic uses LSB for the left pixel.
+     * textvram renderer currently expects MSB for
+     * the left pixel, so reverse the bit order.
+     */
 
     for (y = 0; y < 8; y++)
     {
+        UINT8 value;
+        UINT8 reversed;
+        UINTN bit;
+
+
+        value =
+            (UINT8)font8x8_basic[code][y];
+
+        reversed = 0;
+
+
+        for (bit = 0; bit < 8; bit++)
+        {
+            if (value & (1U << bit))
+            {
+                reversed |=
+                    (UINT8)(
+                        1U << (7 - bit)
+                    );
+            }
+        }
+
+
+        row =
+            reversed;
+
+
         glyph16[y * 2] =
-            font8x8[code][y];
+            row;
 
         glyph16[y * 2 + 1] =
-            font8x8[code][y];
+            row;
     }
 
 

@@ -24,17 +24,26 @@ typedef struct
 } TEXT_CELL;
 
 
-/* 初期化 */
+/* ==========================================================
+ * Initialize
+ * ========================================================== */
+
 void textvram_init(void);
 
 
-/* 全画面クリア */
+/* ==========================================================
+ * Clear
+ * ========================================================== */
+
 void textvram_clear(
     UINT32 foreground,
     UINT32 background);
 
 
-/* 1文字書き込み */
+/* ==========================================================
+ * Direct cell access
+ * ========================================================== */
+
 void textvram_put_char(
     UINTN x,
     UINTN y,
@@ -43,7 +52,44 @@ void textvram_put_char(
     UINT32 background);
 
 
-/* 文字列書き込み */
+const TEXT_CELL *textvram_get_cell(
+    UINTN x,
+    UINTN y);
+
+
+/* ==========================================================
+ * Cursor
+ * ========================================================== */
+
+void textvram_set_cursor(
+    UINTN x,
+    UINTN y);
+
+void textvram_get_cursor(
+    UINTN *x,
+    UINTN *y);
+
+void textvram_show_cursor(
+    BOOLEAN visible);
+
+
+/* ==========================================================
+ * Terminal output
+ * ========================================================== */
+
+void textvram_putc(
+    UINT8 character);
+
+void textvram_print(
+    const char *text);
+
+
+/* ==========================================================
+ * Direct string output
+ *
+ * Cursor positionは変更しない。
+ * ========================================================== */
+
 void textvram_put_string(
     UINTN x,
     UINTN y,
@@ -52,18 +98,19 @@ void textvram_put_string(
     UINT32 background);
 
 
-/* セル取得 */
-const TEXT_CELL *textvram_get_cell(
-    UINTN x,
-    UINTN y);
+/* ==========================================================
+ * Colors used by textvram_putc / textvram_print
+ * ========================================================== */
+
+void textvram_set_color(
+    UINT32 foreground,
+    UINT32 background);
 
 
-/*
- * Graphics Backbufferへ描画
- *
- * origin_x / origin_y が
- * TEXT VRAM画面左上の描画位置。
- */
+/* ==========================================================
+ * Render
+ * ========================================================== */
+
 void textvram_render(
     INTN origin_x,
     INTN origin_y);

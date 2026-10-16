@@ -6,6 +6,17 @@
 #include <efiprot.h>
 
 
+#define INPUT_KEY_QUEUE_SIZE 32
+
+
+typedef struct
+{
+    CHAR16 unicode;
+    UINT16 scan;
+
+} INPUT_KEY_EVENT;
+
+
 typedef struct
 {
     INTN mouse_x;
@@ -18,32 +29,18 @@ typedef struct
 } INPUT_STATE;
 
 
-/*
- * Initialize input devices.
- *
- * Pointer devices are optional.
- */
 EFI_STATUS input_init(void);
 
 
-/*
- * Available pointer devices.
- */
 BOOLEAN input_has_simple_pointer(void);
 BOOLEAN input_has_absolute_pointer(void);
 
 
-/*
- * Input events.
- */
 EFI_EVENT input_simple_pointer_event(void);
 EFI_EVENT input_absolute_pointer_event(void);
 EFI_EVENT input_keyboard_event(void);
 
 
-/*
- * Input handlers.
- */
 void input_handle_simple_pointer(void);
 void input_handle_absolute_pointer(void);
 
@@ -51,14 +48,26 @@ BOOLEAN input_handle_keyboard(void);
 
 
 /*
- * End-of-frame processing.
+ * Keyboard queue
  */
+
+BOOLEAN input_key_available(void);
+
+BOOLEAN input_get_key(
+    INPUT_KEY_EVENT *event);
+
+
+/*
+ * End of frame
+ */
+
 void input_end_frame(void);
 
 
 /*
- * Current input state.
+ * Current input state
  */
+
 const INPUT_STATE *input_state(void);
 
 

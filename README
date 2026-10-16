@@ -109,3 +109,21 @@ system.c
              |
              v
             GOP
+
+UEFI
+ ├─ GOP
+ │   └─ Backbuffer
+ │
+ ├─ Input
+ │   ├─ Keyboard + Queue
+ │   ├─ Simple Pointer
+ │   └─ Absolute Pointer
+ │
+ └─ System
+     ├─ TEXT VRAM 80x25
+     │   ├─ ASCII Font
+     │   ├─ Cursor
+     │   ├─ Wrap
+     │   └─ Scroll
+     │
+     └─ Graphics / GUI

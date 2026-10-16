@@ -30,13 +30,26 @@ static INPUT_STATE state;
 
 
 /* ==========================================================
+ * Keyboard queue
+ * ========================================================== */
+
+static INPUT_KEY_EVENT key_queue[INPUT_KEY_QUEUE_SIZE];
+
+static UINTN key_queue_read = 0;
+static UINTN key_queue_write = 0;
+static UINTN key_queue_count = 0;
+
+
+/* ==========================================================
  * Coordinate clamp
  * ========================================================== */
 
 static INTN clamp_x(
     INTN x)
 {
-    INTN max_x =
+    INTN max_x;
+
+    max_x =
         (INTN)graphics_width() - 1;
 
 
@@ -51,12 +64,12 @@ static INTN clamp_x(
 }
 
 
-/* ---------------------------------------------------------- */
-
 static INTN clamp_y(
     INTN y)
 {
-    INTN max_y =
+    INTN max_y;
+
+    max_y =
         (INTN)graphics_height() - 1;
 
 
@@ -72,7 +85,7 @@ static INTN clamp_y(
 
 
 /* ==========================================================
- * Absolute coordinate conversion
+ * Absolute pointer conversion
  * ========================================================== */
 
 static INTN absolute_to_screen_x(
@@ -81,7 +94,10 @@ static INTN absolute_to_screen_x(
     UINT64 range;
     UINT64 position;
 
-    UINTN screen_w =
+    UINTN screen_w;
+
+
+    screen_w =
         graphics_width();
 
 
@@ -111,11 +127,10 @@ static INTN absolute_to_screen_x(
         (INTN)(
             position *
             (screen_w - 1) /
-            range);
+            range
+        );
 }
 
-
-/* ---------------------------------------------------------- */
 
 static INTN absolute_to_screen_y(
     UINT64 value)
@@ -123,7 +138,10 @@ static INTN absolute_to_screen_y(
     UINT64 range;
     UINT64 position;
 
-    UINTN screen_h =
+    UINTN screen_h;
+
+
+    screen_h =
         graphics_height();
 
 
@@ -153,7 +171,91 @@ static INTN absolute_to_screen_y(
         (INTN)(
             position *
             (screen_h - 1) /
-            range);
+            range
+        );
+}
+
+
+/* ==========================================================
+ * Keyboard queue
+ * ========================================================== */
+
+static void key_queue_clear(void)
+{
+    key_queue_read = 0;
+    key_queue_write = 0;
+    key_queue_count = 0;
+}
+
+
+static BOOLEAN key_queue_push(
+    CHAR16 unicode,
+    UINT16 scan)
+{
+    if (key_queue_count >= INPUT_KEY_QUEUE_SIZE)
+    {
+        return FALSE;
+    }
+
+
+    key_queue[key_queue_write].unicode =
+        unicode;
+
+    key_queue[key_queue_write].scan =
+        scan;
+
+
+    key_queue_write++;
+
+
+    if (key_queue_write >= INPUT_KEY_QUEUE_SIZE)
+    {
+        key_queue_write = 0;
+    }
+
+
+    key_queue_count++;
+
+
+    return TRUE;
+}
+
+
+BOOLEAN input_key_available(void)
+{
+    return
+        key_queue_count != 0;
+}
+
+
+BOOLEAN input_get_key(
+    INPUT_KEY_EVENT *event)
+{
+    if (event == NULL)
+        return FALSE;
+
+
+    if (key_queue_count == 0)
+        return FALSE;
+
+
+    *event =
+        key_queue[key_queue_read];
+
+
+    key_queue_read++;
+
+
+    if (key_queue_read >= INPUT_KEY_QUEUE_SIZE)
+    {
+        key_queue_read = 0;
+    }
+
+
+    key_queue_count--;
+
+
+    return TRUE;
 }
 
 
@@ -172,9 +274,9 @@ EFI_STATUS input_init(void)
         EFI_ABSOLUTE_POINTER_PROTOCOL_GUID;
 
 
-    /*
-     * Initial state
-     */
+    simple_pointer = NULL;
+    absolute_pointer = NULL;
+
 
     state.mouse_x =
         (INTN)graphics_width() / 2;
@@ -182,17 +284,21 @@ EFI_STATUS input_init(void)
     state.mouse_y =
         (INTN)graphics_height() / 2;
 
-    state.mouse_down = FALSE;
-    state.mouse_pressed = FALSE;
-    state.mouse_released = FALSE;
+    state.mouse_down =
+        FALSE;
+
+    state.mouse_pressed =
+        FALSE;
+
+    state.mouse_released =
+        FALSE;
+
+
+    key_queue_clear();
 
 
     /*
-     * ======================================================
      * Simple Pointer
-     *
-     * 実機 USB mouse 等
-     * ======================================================
      */
 
     status =
@@ -216,21 +322,19 @@ EFI_STATUS input_init(void)
 
         if (EFI_ERROR(status))
         {
-            simple_pointer = NULL;
+            simple_pointer =
+                NULL;
         }
     }
     else
     {
-        simple_pointer = NULL;
+        simple_pointer =
+            NULL;
     }
 
 
     /*
-     * ======================================================
      * Absolute Pointer
-     *
-     * QEMU virtio-tablet 等
-     * ======================================================
      */
 
     status =
@@ -268,20 +372,16 @@ EFI_STATUS input_init(void)
         }
         else
         {
-            absolute_pointer = NULL;
+            absolute_pointer =
+                NULL;
         }
     }
     else
     {
-        absolute_pointer = NULL;
+        absolute_pointer =
+            NULL;
     }
 
-
-    /*
-     * Pointerが1つも無くても正常。
-     *
-     * Keyboard-only modeとして継続する。
-     */
 
     return EFI_SUCCESS;
 }
@@ -298,8 +398,6 @@ BOOLEAN input_has_simple_pointer(void)
 }
 
 
-/* ---------------------------------------------------------- */
-
 BOOLEAN input_has_absolute_pointer(void)
 {
     return
@@ -308,7 +406,7 @@ BOOLEAN input_has_absolute_pointer(void)
 
 
 /* ==========================================================
- * Events
+ * Input events
  * ========================================================== */
 
 EFI_EVENT input_simple_pointer_event(void)
@@ -322,8 +420,6 @@ EFI_EVENT input_simple_pointer_event(void)
 }
 
 
-/* ---------------------------------------------------------- */
-
 EFI_EVENT input_absolute_pointer_event(void)
 {
     if (absolute_pointer == NULL)
@@ -335,8 +431,6 @@ EFI_EVENT input_absolute_pointer_event(void)
 }
 
 
-/* ---------------------------------------------------------- */
-
 EFI_EVENT input_keyboard_event(void)
 {
     return
@@ -345,7 +439,7 @@ EFI_EVENT input_keyboard_event(void)
 
 
 /* ==========================================================
- * Mouse button update
+ * Mouse button state
  * ========================================================== */
 
 static void update_mouse_button(
@@ -381,8 +475,6 @@ static void update_mouse_button(
 
 /* ==========================================================
  * Simple Pointer
- *
- * Relative mouse movement
  * ========================================================== */
 
 void input_handle_simple_pointer(void)
@@ -412,25 +504,21 @@ void input_handle_simple_pointer(void)
 
 
     /*
-     * Simple Pointer returns relative movement.
-     *
-     * 初回実機確認では単純な縮尺を使用する。
+     * Temporary scaling.
      */
 
     dx =
         (INTN)(
             pointer_state.RelativeMovementX /
-            8);
+            8
+        );
 
     dy =
         (INTN)(
             pointer_state.RelativeMovementY /
-            8);
+            8
+        );
 
-
-    /*
-     * 小さい移動値が整数除算で消えるのを防ぐ。
-     */
 
     if (dx == 0 &&
         pointer_state.RelativeMovementX != 0)
@@ -454,16 +542,19 @@ void input_handle_simple_pointer(void)
 
     state.mouse_x =
         clamp_x(
-            state.mouse_x + dx);
+            state.mouse_x + dx
+        );
 
 
     state.mouse_y =
         clamp_y(
-            state.mouse_y + dy);
+            state.mouse_y + dy
+        );
 
 
     update_mouse_button(
-        pointer_state.LeftButton);
+        pointer_state.LeftButton
+    );
 }
 
 
@@ -496,16 +587,19 @@ void input_handle_absolute_pointer(void)
 
     state.mouse_x =
         absolute_to_screen_x(
-            pointer_state.CurrentX);
+            pointer_state.CurrentX
+        );
 
 
     state.mouse_y =
         absolute_to_screen_y(
-            pointer_state.CurrentY);
+            pointer_state.CurrentY
+        );
 
 
     update_mouse_button(
-        pointer_state.ActiveButtons != 0);
+        pointer_state.ActiveButtons != 0
+    );
 }
 
 
@@ -520,20 +614,49 @@ BOOLEAN input_handle_keyboard(void)
     EFI_INPUT_KEY key;
 
 
-    status =
-        uefi_call_wrapper(
-            ST->ConIn->ReadKeyStroke,
-            2,
-            ST->ConIn,
-            &key);
+    /*
+     * Read everything currently waiting in the
+     * firmware keyboard buffer.
+     */
+
+    for (;;)
+    {
+        status =
+            uefi_call_wrapper(
+                ST->ConIn->ReadKeyStroke,
+                2,
+                ST->ConIn,
+                &key);
 
 
-    if (EFI_ERROR(status))
-        return TRUE;
+        if (EFI_ERROR(status))
+        {
+            break;
+        }
 
 
-    if (key.ScanCode == SCAN_ESC)
-        return FALSE;
+        /*
+         * ESC exits immediately.
+         */
+
+        if (key.ScanCode == SCAN_ESC)
+        {
+            return FALSE;
+        }
+
+
+        /*
+         * Queue the key.
+         *
+         * If our queue is full, the newest key
+         * is dropped.
+         */
+
+        key_queue_push(
+            key.UnicodeChar,
+            key.ScanCode
+        );
+    }
 
 
     return TRUE;
@@ -555,7 +678,7 @@ void input_end_frame(void)
 
 
 /* ==========================================================
- * State
+ * Current state
  * ========================================================== */
 
 const INPUT_STATE *input_state(void)
