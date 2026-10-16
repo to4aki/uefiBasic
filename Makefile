@@ -2,6 +2,11 @@ TARGET = BOOTX64.EFI
 
 CC = gcc
 
+Z80EX_DIR = z80/z80ex
+
+Z80EX_OBJS = \
+        z80ex_core.o
+
 OBJS = \
 	main.o \
 	graphics.o \
@@ -10,7 +15,17 @@ OBJS = \
 	font8x16.o \
 	hardware.o \
 	fileio.o \
+	z80emu.o \
+	$(Z80EX_OBJS) \
 	system.o
+
+Z80EX_DEFS = \
+        -DWORDS_LITTLE_ENDIAN \
+        -DZ80EX_API_REVISION=1 \
+        -DZ80EX_VERSION_MAJOR=1 \
+        -DZ80EX_VERSION_MINOR=21 \
+        -DZ80EX_RELEASE_TYPE=\"\" \
+        -DZ80EX_VERSION_STR=\"1.21\"
 
 
 # ============================================================
@@ -18,8 +33,9 @@ OBJS = \
 # ============================================================
 
 EFI_INC = \
-	-I/usr/include/efi \
-	-I/usr/include/efi/x86_64
+        -I/usr/include/efi \
+        -I/usr/include/efi/x86_64 \
+        -Iz80/z80ex/include
 
 CFLAGS = \
 	$(EFI_INC) \
@@ -84,6 +100,14 @@ all: $(TARGET)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+
+z80ex_core.o: $(Z80EX_DIR)/z80ex.c
+	$(CC) $(CFLAGS) $(Z80EX_DEFS) \
+		-I$(Z80EX_DIR) \
+		-I$(Z80EX_DIR)/include \
+		-c $< \
+		-o $@
 
 
 boot.so: $(OBJS)

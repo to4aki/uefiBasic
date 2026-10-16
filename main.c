@@ -6,6 +6,7 @@
 #include "system.h"
 #include "hardware.h"
 #include "fileio.h"
+#include "z80emu.h"
 
 
 #define FRAME_INTERVAL_100NS 166667ULL
@@ -110,6 +111,28 @@ efi_main(
             u"FILE IO INIT FAILED: %r\r\n",
             status
         );
+
+        graphics_shutdown();
+
+        return status;
+    }
+
+
+    /* ======================================================
+     * Z80
+     * ====================================================== */
+    status =
+        z80emu_init();
+
+
+    if (EFI_ERROR(status))
+    {
+        Print(
+            u"Z80 INIT FAILED: %r\r\n",
+            status
+        );
+
+        fileio_shutdown();
 
         graphics_shutdown();
 

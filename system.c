@@ -4,7 +4,14 @@
 #include "textvram.h"
 #include "hardware.h"
 #include "fileio.h"
+#include "z80emu.h"
 
+
+static BOOLEAN z80_running = FALSE;
+static UINT32 z80_clock_remainder = 0;
+
+#define Z80_CLOCK_HZ       4000000U
+#define SYSTEM_FRAME_HZ    60U
 
 #define BUTTON_W 200
 #define BUTTON_H 80
@@ -339,13 +346,64 @@ static void draw_cursor(
 
 void system_init(void)
 {
+    EFI_STATUS status;
+
+
     frame_count =
         0;
 
+
     textvram_init();
+
 
     print_hardware_info();
 
+
+    /*
+     * Load RC2014 32K ROM from Intel HEX file.
+     */
+
+    status =
+        z80emu_load_hex(
+            L"\\Z80\\rc2014_32k.hex"
+        );
+
+
+    if (EFI_ERROR(status))
+    {
+        z80_running =
+            FALSE;
+
+
+        textvram_print(
+            "\nRC2014 ROM LOAD FAILED\n"
+        );
+
+
+        return;
+    }
+
+
+    /*
+     * Reset Z80.
+     * PC starts from address 0x0000.
+     */
+
+    z80emu_reset();
+
+
+    z80_running =
+        TRUE;
+
+
+    textvram_print(
+        "\nRC2014 ROM LOADED\n"
+    );
+
+
+    textvram_print(
+        "Z80 RUNNING\n"
+    );
 }
 
 
@@ -403,28 +461,67 @@ static void process_keyboard(void)
 
 void system_update(void)
 {
-    const INPUT_STATE *input;
+    UINT32 z80_cycles;
 
 
-    input =
-        input_state();
+    /*
+     * Z80が開始されていなければ実行しない。
+     */
 
-
-    process_keyboard();
-
-
-    if (input->mouse_pressed)
+    if (z80_running)
     {
-        if (point_in_button(
-                input->mouse_x,
-                input->mouse_y))
+        /*
+         * 4MHzを60Hzに分配する。
+         *
+         * 4000000 / 60 = 66666 remainder 40
+         */
+
+        z80_cycles =
+            Z80_CLOCK_HZ /
+            SYSTEM_FRAME_HZ;
+
+
+        /*
+         * 整数除算で失われる余りを累積する。
+         */
+
+        z80_clock_remainder +=
+            Z80_CLOCK_HZ %
+            SYSTEM_FRAME_HZ;
+
+
+        /*
+         * 1 T-state分たまったら、
+         * 今回の実行量へ追加する。
+         */
+
+        if (z80_clock_remainder >=
+            SYSTEM_FRAME_HZ)
         {
-            /*
-             * Button clicked.
-             */
+            z80_clock_remainder -=
+                SYSTEM_FRAME_HZ;
+
+            z80_cycles++;
         }
+
+
+        /*
+         * Z80を指定T-state分実行する。
+         *
+         * 命令境界による超過については
+         * z80emu_run_cycles() 内の
+         * cycle_debt が補正する。
+         */
+
+        z80emu_run_cycles(
+            (int)z80_cycles
+        );
     }
 
+
+    /*
+     * System frame counter.
+     */
 
     frame_count++;
 }
