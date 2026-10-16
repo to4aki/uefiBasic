@@ -9,6 +9,7 @@ OBJS = \
 	textvram.o \
 	font8x16.o \
 	hardware.o \
+	fileio.o \
 	system.o
 
 

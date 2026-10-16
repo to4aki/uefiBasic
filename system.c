@@ -3,6 +3,7 @@
 #include "input.h"
 #include "textvram.h"
 #include "hardware.h"
+#include "fileio.h"
 
 
 #define BUTTON_W 200
@@ -341,11 +342,10 @@ void system_init(void)
     frame_count =
         0;
 
-
     textvram_init();
 
-
     print_hardware_info();
+
 }
 
 

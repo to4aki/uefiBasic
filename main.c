@@ -5,6 +5,7 @@
 #include "input.h"
 #include "system.h"
 #include "hardware.h"
+#include "fileio.h"
 
 
 #define FRAME_INTERVAL_100NS 166667ULL
@@ -91,6 +92,29 @@ efi_main(
      * ====================================================== */
 
      hardware_detect();
+
+
+    /* ======================================================
+     * File System
+     * ====================================================== */
+
+    status =
+        fileio_init(
+            ImageHandle
+        );
+
+
+    if (EFI_ERROR(status))
+    {
+        Print(
+            u"FILE IO INIT FAILED: %r\r\n",
+            status
+        );
+
+        graphics_shutdown();
+
+        return status;
+    }
 
 
     /* ======================================================

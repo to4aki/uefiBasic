@@ -1,0 +1,1001 @@
+============================================================
+FILEIO API USAGE
+============================================================
+
+fileio は UEFI Simple File System Protocol をラップした
+ファイルアクセスインターフェースです。
+
+通常のファイルアクセスでは High Level API を使用します。
+
+ディスクイメージなど、ファイル内の任意位置へアクセスする
+必要がある場合のみ Low Level API を使用します。
+
+
+============================================================
+1. INITIALIZE
+============================================================
+
+fileio を使用する前に efi_main() で初期化します。
+
+
+#include "fileio.h"
+
+
+EFI_STATUS status;
+
+
+status =
+    fileio_init(
+        ImageHandle
+    );
+
+
+if (EFI_ERROR(status))
+{
+    /*
+     * File system initialization failed.
+     */
+}
+
+
+fileio_init() は BOOTX64.EFI が読み込まれたデバイスの
+ファイルシステムを使用します。
+
+
+============================================================
+2. SHUTDOWN
+============================================================
+
+終了時には以下を呼びます。
+
+
+fileio_shutdown();
+
+
+通常は efi_main() の終了処理で呼びます。
+
+
+============================================================
+3. FILE PATH
+============================================================
+
+パスは CHAR16 で指定します。
+
+
+L"\\TEST.TXT"
+
+L"\\CONFIG.TXT"
+
+L"\\ROM\\BASIC.ROM"
+
+L"\\DISK\\DRIVEA.IMG"
+
+
+先頭の "\\" はファイルシステムのルートを表します。
+
+
+============================================================
+4. HIGH LEVEL API
+============================================================
+
+通常はこちらを使用します。
+
+
+Text file:
+
+    fileio_read_text()
+    fileio_write_text()
+    fileio_append_text()
+
+
+Binary file:
+
+    fileio_read_binary()
+    fileio_write_binary()
+
+
+Allocated buffer:
+
+    fileio_free()
+
+
+High Level API を使用すれば、
+open / read / write / close をアプリケーション側で
+個別に処理する必要はありません。
+
+
+============================================================
+5. READ TEXT FILE
+============================================================
+
+テキストファイル全体を読み込みます。
+
+
+char *text;
+
+
+text =
+    fileio_read_text(
+        L"\\TEST.TXT",
+        NULL
+    );
+
+
+if (text != NULL)
+{
+    textvram_print(
+        text
+    );
+
+
+    fileio_free(
+        text
+    );
+}
+
+
+戻り値:
+
+    Success:
+        zero terminated text buffer
+
+    Error:
+        NULL
+
+
+読み込んだバッファは fileio が AllocatePool() で
+確保しています。
+
+使用後は必ず、
+
+    fileio_free()
+
+で解放します。
+
+
+============================================================
+6. READ TEXT FILE WITH SIZE
+============================================================
+
+ファイルサイズも必要な場合:
+
+
+char *text;
+
+UINTN size;
+
+
+text =
+    fileio_read_text(
+        L"\\TEST.TXT",
+        &size
+    );
+
+
+if (text != NULL)
+{
+    /*
+     * text:
+     *     zero terminated text
+     *
+     * size:
+     *     file size in bytes
+     */
+
+
+    fileio_free(
+        text
+    );
+}
+
+
+終端の '\0' は size には含まれません。
+
+
+============================================================
+7. WRITE TEXT FILE
+============================================================
+
+テキストファイルを書き込みます。
+
+
+EFI_STATUS status;
+
+
+status =
+    fileio_write_text(
+        L"\\OUTPUT.TXT",
+        "Hello from UEFI.\r\n"
+    );
+
+
+if (EFI_ERROR(status))
+{
+    /*
+     * Write failed.
+     */
+}
+
+
+文字列長を指定する必要はありません。
+
+
+============================================================
+8. APPEND TEXT FILE
+============================================================
+
+既存ファイルの末尾へテキストを追加します。
+
+
+EFI_STATUS status;
+
+
+status =
+    fileio_append_text(
+        L"\\LOG.TXT",
+        "System started.\r\n"
+    );
+
+
+ファイルが存在しない場合は新規作成を試みます。
+
+
+使用例:
+
+
+fileio_append_text(
+    L"\\LOG.TXT",
+    "Keyboard initialized.\r\n"
+);
+
+
+fileio_append_text(
+    L"\\LOG.TXT",
+    "Graphics initialized.\r\n"
+);
+
+
+============================================================
+9. READ BINARY FILE
+============================================================
+
+バイナリファイル全体をメモリへ読み込みます。
+
+
+UINT8 *rom;
+
+UINTN rom_size;
+
+
+rom =
+    fileio_read_binary(
+        L"\\ROM\\BASIC.ROM",
+        &rom_size
+    );
+
+
+if (rom != NULL)
+{
+    /*
+     * Use ROM data.
+     */
+
+
+    fileio_free(
+        rom
+    );
+}
+
+
+戻り値:
+
+    Success:
+        file buffer
+
+    Error:
+        NULL
+
+
+size にはファイルサイズが入ります。
+
+
+============================================================
+10. WRITE BINARY FILE
+============================================================
+
+バイナリデータをファイルへ保存します。
+
+
+UINT8 data[512];
+
+EFI_STATUS status;
+
+
+/*
+ * Fill data here.
+ */
+
+
+status =
+    fileio_write_binary(
+        L"\\SAVE.DAT",
+        data,
+        sizeof(data)
+    );
+
+
+============================================================
+11. FREE BUFFER
+============================================================
+
+以下の関数が返したメモリ:
+
+    fileio_read_text()
+    fileio_read_binary()
+
+は、
+
+    fileio_free()
+
+で解放します。
+
+
+Example:
+
+
+char *text;
+
+
+text =
+    fileio_read_text(
+        L"\\CONFIG.TXT",
+        NULL
+    );
+
+
+if (text != NULL)
+{
+    /*
+     * Use text.
+     */
+
+
+    fileio_free(
+        text
+    );
+}
+
+
+============================================================
+12. SIMPLE TEXT EXAMPLE
+============================================================
+
+元の file I/O test は High Level API を使用すると
+以下のように書けます。
+
+
+static void test_file_io(void)
+{
+    EFI_STATUS status;
+
+    char *text;
+
+
+    status =
+        fileio_write_text(
+            L"\\OUTPUT.TXT",
+            "Hello from UEFI file system.\r\n"
+        );
+
+
+    if (EFI_ERROR(status))
+    {
+        textvram_print(
+            "WRITE OUTPUT.TXT FAILED\n"
+        );
+    }
+    else
+    {
+        textvram_print(
+            "WRITE OUTPUT.TXT OK\n"
+        );
+    }
+
+
+    text =
+        fileio_read_text(
+            L"\\TEST.TXT",
+            NULL
+        );
+
+
+    if (text == NULL)
+    {
+        textvram_print(
+            "READ TEST.TXT FAILED\n"
+        );
+
+        return;
+    }
+
+
+    textvram_print(
+        "READ TEST.TXT OK\n"
+    );
+
+
+    textvram_print(
+        "----- FILE -----\n"
+    );
+
+
+    textvram_print(
+        text
+    );
+
+
+    textvram_print(
+        "\n----- EOF -----\n"
+    );
+
+
+    fileio_free(
+        text
+    );
+}
+
+
+============================================================
+13. LOW LEVEL API
+============================================================
+
+ファイル内の任意位置へアクセスする場合は
+Low Level API を使用します。
+
+
+Available functions:
+
+    fileio_open()
+    fileio_close()
+
+    fileio_read()
+    fileio_write()
+
+    fileio_seek()
+    fileio_tell()
+
+    fileio_size()
+
+    fileio_flush()
+
+    fileio_exists()
+
+
+主な用途:
+
+    Disk image
+    Large file
+    Random access file
+    Sector access
+
+
+============================================================
+14. OPEN MODE
+============================================================
+
+FILEIO_MODE_READ
+
+    Read access
+
+
+FILEIO_MODE_WRITE
+
+    Write access
+
+
+FILEIO_MODE_CREATE
+
+    Create file when needed
+
+
+Mode can be combined using "|".
+
+
+Read only:
+
+    FILEIO_MODE_READ
+
+
+Read and write:
+
+    FILEIO_MODE_READ |
+    FILEIO_MODE_WRITE
+
+
+Read, write and create:
+
+    FILEIO_MODE_READ |
+    FILEIO_MODE_WRITE |
+    FILEIO_MODE_CREATE
+
+
+============================================================
+15. OPEN FILE
+============================================================
+
+FILEIO_HANDLE *file;
+
+EFI_STATUS status;
+
+
+file =
+    NULL;
+
+
+status =
+    fileio_open(
+        L"\\DISK.IMG",
+        FILEIO_MODE_READ |
+        FILEIO_MODE_WRITE,
+        &file
+    );
+
+
+if (EFI_ERROR(status))
+{
+    /*
+     * Open failed.
+     */
+}
+
+
+============================================================
+16. CLOSE FILE
+============================================================
+
+使用後は close します。
+
+
+status =
+    fileio_close(
+        file
+    );
+
+
+close 後の FILEIO_HANDLE は使用しません。
+
+
+============================================================
+17. READ
+============================================================
+
+UINT8 buffer[512];
+
+UINTN read_size;
+
+
+status =
+    fileio_read(
+        file,
+        buffer,
+        sizeof(buffer),
+        &read_size
+    );
+
+
+read_size には実際に読み込まれたバイト数が入ります。
+
+
+============================================================
+18. WRITE
+============================================================
+
+UINT8 buffer[512];
+
+UINTN written_size;
+
+
+status =
+    fileio_write(
+        file,
+        buffer,
+        sizeof(buffer),
+        &written_size
+    );
+
+
+written_size には実際に書き込まれたバイト数が入ります。
+
+
+============================================================
+19. SEEK
+============================================================
+
+ファイル位置を変更します。
+
+
+status =
+    fileio_seek(
+        file,
+        1024
+    );
+
+
+この例ではファイル先頭から1024バイトの位置へ移動します。
+
+
+============================================================
+20. CURRENT POSITION
+============================================================
+
+UINT64 position;
+
+
+status =
+    fileio_tell(
+        file,
+        &position
+    );
+
+
+============================================================
+21. FILE SIZE
+============================================================
+
+UINT64 size;
+
+
+status =
+    fileio_size(
+        file,
+        &size
+    );
+
+
+fileio_size() を呼んでも現在のファイル位置は維持されます。
+
+
+============================================================
+22. FLUSH
+============================================================
+
+書き込み内容をファイルシステムへ反映します。
+
+
+status =
+    fileio_flush(
+        file
+    );
+
+
+============================================================
+23. FILE EXISTS
+============================================================
+
+if (fileio_exists(
+        L"\\CONFIG.TXT"))
+{
+    /*
+     * File exists.
+     */
+}
+
+
+============================================================
+24. DISK IMAGE SECTOR READ
+============================================================
+
+ディスクイメージのようなランダムアクセスでは、
+Low Level API を使用します。
+
+
+#define SECTOR_SIZE 512
+
+
+FILEIO_HANDLE *disk;
+
+UINT8 sector[SECTOR_SIZE];
+
+UINTN read_size;
+
+UINT64 sector_number;
+
+EFI_STATUS status;
+
+
+disk =
+    NULL;
+
+
+status =
+    fileio_open(
+        L"\\DISK\\DRIVEA.IMG",
+        FILEIO_MODE_READ |
+        FILEIO_MODE_WRITE,
+        &disk
+    );
+
+
+if (!EFI_ERROR(status))
+{
+    sector_number =
+        10;
+
+
+    status =
+        fileio_seek(
+            disk,
+            sector_number *
+            SECTOR_SIZE
+        );
+
+
+    if (!EFI_ERROR(status))
+    {
+        status =
+            fileio_read(
+                disk,
+                sector,
+                SECTOR_SIZE,
+                &read_size
+            );
+    }
+
+
+    fileio_close(
+        disk
+    );
+}
+
+
+============================================================
+25. DISK IMAGE SECTOR WRITE
+============================================================
+
+FILEIO_HANDLE *disk;
+
+UINT8 sector[512];
+
+UINTN written_size;
+
+UINT64 sector_number;
+
+EFI_STATUS status;
+
+
+disk =
+    NULL;
+
+
+status =
+    fileio_open(
+        L"\\DISK\\DRIVEA.IMG",
+        FILEIO_MODE_READ |
+        FILEIO_MODE_WRITE,
+        &disk
+    );
+
+
+if (!EFI_ERROR(status))
+{
+    sector_number =
+        10;
+
+
+    status =
+        fileio_seek(
+            disk,
+            sector_number *
+            512ULL
+        );
+
+
+    if (!EFI_ERROR(status))
+    {
+        status =
+            fileio_write(
+                disk,
+                sector,
+                sizeof(sector),
+                &written_size
+            );
+    }
+
+
+    fileio_close(
+        disk
+    );
+}
+
+
+============================================================
+26. HIGH LEVEL AND LOW LEVEL SELECTION
+============================================================
+
+Text file:
+
+    fileio_read_text()
+    fileio_write_text()
+    fileio_append_text()
+
+
+ROM:
+
+    fileio_read_binary()
+
+
+Small binary data:
+
+    fileio_read_binary()
+    fileio_write_binary()
+
+
+Configuration:
+
+    fileio_read_text()
+    fileio_write_text()
+
+
+Log:
+
+    fileio_append_text()
+
+
+Disk image:
+
+    fileio_open()
+    fileio_seek()
+    fileio_read()
+    fileio_write()
+    fileio_flush()
+    fileio_close()
+
+
+Random access file:
+
+    Low Level API
+
+
+============================================================
+27. INTERNAL LAYER STRUCTURE
+============================================================
+
+Application
+
+    |
+    +-- High Level API
+    |      |
+    |      +-- read_text
+    |      +-- write_text
+    |      +-- append_text
+    |      +-- read_binary
+    |      +-- write_binary
+    |      +-- free
+    |
+    +-- Low Level API
+           |
+           +-- open
+           +-- read
+           +-- write
+           +-- seek
+           +-- tell
+           +-- size
+           +-- flush
+           +-- close
+                  |
+                  v
+          EFI_FILE_PROTOCOL
+
+
+High Level API は Low Level fileio を利用して実装されています。
+
+通常のアプリケーションコードでは High Level API を優先し、
+ランダムアクセスが必要な場合のみ Low Level API を使用します。
+
+
+============================================================
+28. ERROR HANDLING
+============================================================
+
+書き込み系関数は EFI_STATUS を返します。
+
+
+Example:
+
+
+status =
+    fileio_write_text(
+        L"\\CONFIG.TXT",
+        "MODE=TEST\r\n"
+    );
+
+
+if (EFI_ERROR(status))
+{
+    /*
+     * Error
+     */
+}
+
+
+read_text / read_binary は読み込み失敗時に NULL を返します。
+
+
+============================================================
+29. CURRENT LIMITATION
+============================================================
+
+fileio_write_text() と fileio_write_binary() は
+内部で fileio_save() を使用しています。
+
+現在の fileio_save() は既存ファイルを書き直す際、
+新しいデータが以前のファイルより短い場合に、
+古いファイルの末尾部分が残る可能性があります。
+
+例:
+
+Existing file:
+
+    ABCDEFGHIJ
+
+New data:
+
+    ABC
+
+
+現在の実装では完全な truncate を保証していません。
+
+Disk image のランダムアクセスでは問題ありませんが、
+通常の「ファイルを置き換える」という用途では
+truncate 対応を追加することを推奨します。
+
+
+============================================================
+30. API SUMMARY
+============================================================
+
+File system:
+
+    fileio_init()
+    fileio_shutdown()
+
+
+High Level Text:
+
+    fileio_read_text()
+    fileio_write_text()
+    fileio_append_text()
+
+
+High Level Binary:
+
+    fileio_read_binary()
+    fileio_write_binary()
+
+
+Buffer:
+
+    fileio_free()
+
+
+Low Level:
+
+    fileio_open()
+    fileio_close()
+
+    fileio_read()
+    fileio_write()
+
+    fileio_seek()
+    fileio_tell()
+
+    fileio_size()
+    fileio_flush()
+
+    fileio_exists()
+
+
+============================================================
+END
+============================================================
+
