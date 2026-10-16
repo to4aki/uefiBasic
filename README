@@ -36,3 +36,76 @@ cursor       →│        │
                     │
                     ▼
              GOP framebuffer
+
+
+main.c
+UEFIランタイム
+   │
+   ├── input.c
+   │     Keyboard + Pointer
+   │
+   └── system.c ※ここを育てる
+          │
+          ├── textvram.c
+          │      │
+          │      │ 80x25 cells
+          │      │
+          │      ▼
+          └── graphics.c
+                 │
+                 ▼
+             Backbuffer
+                 │
+             present()
+                 │
+                 ▼
+                GOP
+
+TEXT_CELL
+    |
+    +-- character
+    |
+    +-- foreground
+    |
+    +-- background
+          |
+          v
+font8x16_get()
+          |
+          v
+       8x16 bitmap
+          |
+          v
+graphics_put_pixel()
+          |
+          v
+      Backbuffer
+
+
+system.c
+
+    textvram_put_string()
+             |
+             v
+       +-------------+
+       |  TEXT VRAM  |
+       |    80x25    |
+       +-------------+
+             |
+      textvram_render()
+             |
+             v
+        font8x16
+             |
+             v
+     graphics_put_pixel()
+             |
+             v
+       +-------------+
+       | Backbuffer  |
+       +-------------+
+             |
+     graphics_present()
+             |
+             v
+            GOP

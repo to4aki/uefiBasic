@@ -2,6 +2,14 @@ TARGET = BOOTX64.EFI
 
 CC = gcc
 
+OBJS = \
+	main.o \
+	graphics.o \
+	input.o \
+	textvram.o \
+	font8x16.o \
+	system.o
+
 
 # ============================================================
 # GNU-EFI
@@ -72,20 +80,19 @@ ESP_OFFSET_BYTES = 1048576
 all: $(TARGET)
 
 
-main.o: main.c
+%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 
-boot.so: main.o
+boot.so: $(OBJS)
 	$(CC) \
 		$(LDFLAGS) \
 		/usr/lib/crt0-efi-x86_64.o \
-		main.o \
+		$(OBJS) \
 		-L/usr/lib \
 		-lefi \
 		-lgnuefi \
 		-o $@
-
 
 $(TARGET): boot.so
 	objcopy \
