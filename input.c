@@ -2,18 +2,27 @@
 #include "graphics.h"
 
 
-/* ==========================================================
- * Pointer protocols
- * ========================================================== */
+typedef enum
+{
+    POINTER_AUTO = 0,
+    POINTER_SIMPLE,
+    POINTER_ABSOLUTE
+
+} ACTIVE_POINTER_TYPE;
+
 
 static EFI_SIMPLE_POINTER_PROTOCOL *simple_pointer = NULL;
 
 static EFI_ABSOLUTE_POINTER_PROTOCOL *absolute_pointer = NULL;
 
 
-/* ==========================================================
- * Absolute pointer parameters
- * ========================================================== */
+static ACTIVE_POINTER_TYPE active_pointer =
+    POINTER_AUTO;
+
+
+/*
+ * Absolute pointer information
+ */
 
 static UINT64 absolute_min_x = 0;
 static UINT64 absolute_max_x = 0;
@@ -22,16 +31,16 @@ static UINT64 absolute_min_y = 0;
 static UINT64 absolute_max_y = 0;
 
 
-/* ==========================================================
+/*
  * Input state
- * ========================================================== */
+ */
 
 static INPUT_STATE state;
 
 
-/* ==========================================================
+/*
  * Keyboard queue
- * ========================================================== */
+ */
 
 static INPUT_KEY_EVENT key_queue[INPUT_KEY_QUEUE_SIZE];
 
@@ -85,7 +94,7 @@ static INTN clamp_y(
 
 
 /* ==========================================================
- * Absolute pointer conversion
+ * Absolute coordinate conversion
  * ========================================================== */
 
 static INTN absolute_to_screen_x(
@@ -93,7 +102,6 @@ static INTN absolute_to_screen_x(
 {
     UINT64 range;
     UINT64 position;
-
     UINTN screen_w;
 
 
@@ -101,13 +109,13 @@ static INTN absolute_to_screen_x(
         graphics_width();
 
 
+    if (absolute_max_x <= absolute_min_x)
+        return 0;
+
+
     range =
         absolute_max_x -
         absolute_min_x;
-
-
-    if (range == 0)
-        return 0;
 
 
     if (value <= absolute_min_x)
@@ -137,7 +145,6 @@ static INTN absolute_to_screen_y(
 {
     UINT64 range;
     UINT64 position;
-
     UINTN screen_h;
 
 
@@ -145,13 +152,13 @@ static INTN absolute_to_screen_y(
         graphics_height();
 
 
+    if (absolute_max_y <= absolute_min_y)
+        return 0;
+
+
     range =
         absolute_max_y -
         absolute_min_y;
-
-
-    if (range == 0)
-        return 0;
 
 
     if (value <= absolute_min_y)
@@ -193,9 +200,7 @@ static BOOLEAN key_queue_push(
     UINT16 scan)
 {
     if (key_queue_count >= INPUT_KEY_QUEUE_SIZE)
-    {
         return FALSE;
-    }
 
 
     key_queue[key_queue_write].unicode =
@@ -223,8 +228,7 @@ static BOOLEAN key_queue_push(
 
 BOOLEAN input_key_available(void)
 {
-    return
-        key_queue_count != 0;
+    return key_queue_count != 0;
 }
 
 
@@ -260,6 +264,39 @@ BOOLEAN input_get_key(
 
 
 /* ==========================================================
+ * Mouse button
+ * ========================================================== */
+
+static void update_mouse_button(
+    BOOLEAN new_down)
+{
+    BOOLEAN old_down;
+
+
+    old_down =
+        state.mouse_down;
+
+
+    state.mouse_down =
+        new_down;
+
+
+    if (!old_down && new_down)
+    {
+        state.mouse_pressed =
+            TRUE;
+    }
+
+
+    if (old_down && !new_down)
+    {
+        state.mouse_released =
+            TRUE;
+    }
+}
+
+
+/* ==========================================================
  * Initialize
  * ========================================================== */
 
@@ -276,6 +313,9 @@ EFI_STATUS input_init(void)
 
     simple_pointer = NULL;
     absolute_pointer = NULL;
+
+    active_pointer =
+        POINTER_AUTO;
 
 
     state.mouse_x =
@@ -307,7 +347,8 @@ EFI_STATUS input_init(void)
             3,
             &simple_guid,
             NULL,
-            (VOID **)&simple_pointer);
+            (VOID **)&simple_pointer
+        );
 
 
     if (!EFI_ERROR(status))
@@ -317,7 +358,8 @@ EFI_STATUS input_init(void)
                 simple_pointer->Reset,
                 2,
                 simple_pointer,
-                FALSE);
+                FALSE
+            );
 
 
         if (EFI_ERROR(status))
@@ -343,7 +385,8 @@ EFI_STATUS input_init(void)
             3,
             &absolute_guid,
             NULL,
-            (VOID **)&absolute_pointer);
+            (VOID **)&absolute_pointer
+        );
 
 
     if (!EFI_ERROR(status))
@@ -353,7 +396,8 @@ EFI_STATUS input_init(void)
                 absolute_pointer->Reset,
                 2,
                 absolute_pointer,
-                FALSE);
+                FALSE
+            );
 
 
         if (!EFI_ERROR(status))
@@ -393,20 +437,18 @@ EFI_STATUS input_init(void)
 
 BOOLEAN input_has_simple_pointer(void)
 {
-    return
-        simple_pointer != NULL;
+    return simple_pointer != NULL;
 }
 
 
 BOOLEAN input_has_absolute_pointer(void)
 {
-    return
-        absolute_pointer != NULL;
+    return absolute_pointer != NULL;
 }
 
 
 /* ==========================================================
- * Input events
+ * Events
  * ========================================================== */
 
 EFI_EVENT input_simple_pointer_event(void)
@@ -415,8 +457,7 @@ EFI_EVENT input_simple_pointer_event(void)
         return NULL;
 
 
-    return
-        simple_pointer->WaitForInput;
+    return simple_pointer->WaitForInput;
 }
 
 
@@ -426,50 +467,13 @@ EFI_EVENT input_absolute_pointer_event(void)
         return NULL;
 
 
-    return
-        absolute_pointer->WaitForInput;
+    return absolute_pointer->WaitForInput;
 }
 
 
 EFI_EVENT input_keyboard_event(void)
 {
-    return
-        ST->ConIn->WaitForKey;
-}
-
-
-/* ==========================================================
- * Mouse button state
- * ========================================================== */
-
-static void update_mouse_button(
-    BOOLEAN new_down)
-{
-    BOOLEAN old_down;
-
-
-    old_down =
-        state.mouse_down;
-
-
-    state.mouse_down =
-        new_down;
-
-
-    if (!old_down &&
-        new_down)
-    {
-        state.mouse_pressed =
-            TRUE;
-    }
-
-
-    if (old_down &&
-        !new_down)
-    {
-        state.mouse_released =
-            TRUE;
-    }
+    return ST->ConIn->WaitForKey;
 }
 
 
@@ -483,11 +487,28 @@ void input_handle_simple_pointer(void)
 
     EFI_SIMPLE_POINTER_STATE pointer_state;
 
-    INTN dx;
-    INTN dy;
+    INT64 raw_x;
+    INT64 raw_y;
+
+    UINT64 resolution_x;
+    UINT64 resolution_y;
+
+    INT64 dx;
+    INT64 dy;
+
+    BOOLEAN button_down;
+    BOOLEAN activity;
 
 
     if (simple_pointer == NULL)
+        return;
+
+
+    /*
+     * Another pointer already owns the cursor.
+     */
+
+    if (active_pointer == POINTER_ABSOLUTE)
         return;
 
 
@@ -496,44 +517,131 @@ void input_handle_simple_pointer(void)
             simple_pointer->GetState,
             2,
             simple_pointer,
-            &pointer_state);
+            &pointer_state
+        );
 
 
     if (EFI_ERROR(status))
         return;
 
 
+    raw_x =
+        (INT64)pointer_state.RelativeMovementX;
+
+    raw_y =
+        (INT64)pointer_state.RelativeMovementY;
+
+
+    button_down =
+        pointer_state.LeftButton;
+
+
+    activity =
+        (raw_x != 0) ||
+        (raw_y != 0) ||
+        button_down;
+
+
     /*
-     * Temporary scaling.
+     * Do not select Simple merely because the protocol exists.
+     * Select it after actual pointer activity.
      */
 
-    dx =
-        (INTN)(
-            pointer_state.RelativeMovementX /
-            8
-        );
-
-    dy =
-        (INTN)(
-            pointer_state.RelativeMovementY /
-            8
-        );
-
-
-    if (dx == 0 &&
-        pointer_state.RelativeMovementX != 0)
+    if (active_pointer == POINTER_AUTO)
     {
-        if (pointer_state.RelativeMovementX > 0)
+        if (!activity)
+            return;
+
+        active_pointer =
+            POINTER_SIMPLE;
+    }
+
+
+    resolution_x =
+        simple_pointer->Mode->ResolutionX;
+
+    resolution_y =
+        simple_pointer->Mode->ResolutionY;
+
+
+    dx = 0;
+    dy = 0;
+
+
+    /*
+     * UEFI Simple Pointer:
+     *
+     * RelativeMovement is in counts.
+     * Resolution is counts per millimeter.
+     *
+     * Convert physical movement to screen movement.
+     *
+     * 1 mm -> 2 percent of screen dimension.
+     */
+
+    if (resolution_x != 0)
+    {
+        dx =
+            raw_x *
+            (INT64)graphics_width();
+
+        dx /=
+            ((INT64)resolution_x * 200);
+    }
+
+
+    if (resolution_y != 0)
+    {
+        dy =
+            raw_y *
+            (INT64)graphics_height();
+
+        dy /=
+            ((INT64)resolution_y * 200);
+    }
+
+
+    /*
+     * Some firmware may report zero resolution.
+     *
+     * Use the sign of the raw movement as a conservative
+     * fallback instead of treating the raw count as pixels.
+     */
+
+    if (resolution_x == 0 && raw_x != 0)
+    {
+        if (raw_x > 0)
             dx = 1;
         else
             dx = -1;
     }
 
 
-    if (dy == 0 &&
-        pointer_state.RelativeMovementY != 0)
+    if (resolution_y == 0 && raw_y != 0)
     {
-        if (pointer_state.RelativeMovementY > 0)
+        if (raw_y > 0)
+            dy = 1;
+        else
+            dy = -1;
+    }
+
+
+    /*
+     * Integer conversion can turn very small movement into 0.
+     */
+
+    if (dx == 0 && raw_x != 0)
+    {
+        if (raw_x > 0)
+            dx = 1;
+        else
+            dx = -1;
+    }
+
+
+    if (dy == 0 && raw_y != 0)
+    {
+        if (raw_y > 0)
             dy = 1;
         else
             dy = -1;
@@ -542,18 +650,20 @@ void input_handle_simple_pointer(void)
 
     state.mouse_x =
         clamp_x(
-            state.mouse_x + dx
+            state.mouse_x +
+            (INTN)dx
         );
 
 
     state.mouse_y =
         clamp_y(
-            state.mouse_y + dy
+            state.mouse_y +
+            (INTN)dy
         );
 
 
     update_mouse_button(
-        pointer_state.LeftButton
+        button_down
     );
 }
 
@@ -568,8 +678,22 @@ void input_handle_absolute_pointer(void)
 
     EFI_ABSOLUTE_POINTER_STATE pointer_state;
 
+    INTN new_x;
+    INTN new_y;
+
+    BOOLEAN button_down;
+    BOOLEAN activity;
+
 
     if (absolute_pointer == NULL)
+        return;
+
+
+    /*
+     * Simple Pointer already owns the cursor.
+     */
+
+    if (active_pointer == POINTER_SIMPLE)
         return;
 
 
@@ -578,27 +702,59 @@ void input_handle_absolute_pointer(void)
             absolute_pointer->GetState,
             2,
             absolute_pointer,
-            &pointer_state);
+            &pointer_state
+        );
 
 
     if (EFI_ERROR(status))
         return;
 
 
-    state.mouse_x =
+    new_x =
         absolute_to_screen_x(
             pointer_state.CurrentX
         );
 
 
-    state.mouse_y =
+    new_y =
         absolute_to_screen_y(
             pointer_state.CurrentY
         );
 
 
+    button_down =
+        pointer_state.ActiveButtons != 0;
+
+
+    activity =
+        (new_x != state.mouse_x) ||
+        (new_y != state.mouse_y) ||
+        button_down;
+
+
+    /*
+     * Select Absolute only after real activity.
+     */
+
+    if (active_pointer == POINTER_AUTO)
+    {
+        if (!activity)
+            return;
+
+        active_pointer =
+            POINTER_ABSOLUTE;
+    }
+
+
+    state.mouse_x =
+        clamp_x(new_x);
+
+    state.mouse_y =
+        clamp_y(new_y);
+
+
     update_mouse_button(
-        pointer_state.ActiveButtons != 0
+        button_down
     );
 }
 
@@ -614,11 +770,6 @@ BOOLEAN input_handle_keyboard(void)
     EFI_INPUT_KEY key;
 
 
-    /*
-     * Read everything currently waiting in the
-     * firmware keyboard buffer.
-     */
-
     for (;;)
     {
         status =
@@ -626,7 +777,8 @@ BOOLEAN input_handle_keyboard(void)
                 ST->ConIn->ReadKeyStroke,
                 2,
                 ST->ConIn,
-                &key);
+                &key
+            );
 
 
         if (EFI_ERROR(status))
@@ -635,22 +787,11 @@ BOOLEAN input_handle_keyboard(void)
         }
 
 
-        /*
-         * ESC exits immediately.
-         */
-
         if (key.ScanCode == SCAN_ESC)
         {
             return FALSE;
         }
 
-
-        /*
-         * Queue the key.
-         *
-         * If our queue is full, the newest key
-         * is dropped.
-         */
 
         key_queue_push(
             key.UnicodeChar,
