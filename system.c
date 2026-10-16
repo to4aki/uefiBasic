@@ -19,6 +19,9 @@ static UINT32 z80_clock_remainder = 0;
 
 static UINT64 frame_count = 0;
 
+static BOOLEAN irq_pending =
+    FALSE;
+
 
 /* ==========================================================
  * Print unsigned integer
@@ -459,16 +462,12 @@ static void process_keyboard(void)
  * Update
  * ========================================================== */
 
-
 void system_update(void)
 {
     EFI_INPUT_KEY key;
     EFI_STATUS status;
 
     UINT32 z80_cycles;
-
-    BOOLEAN interrupt =
-        FALSE;
 
 
     /*
@@ -501,8 +500,7 @@ void system_update(void)
                     (UINT8)key.UnicodeChar
                 );
 
-
-                interrupt =
+                irq_pending =
                     TRUE;
             }
 
@@ -517,8 +515,7 @@ void system_update(void)
                     0x0D
                 );
 
-
-                interrupt =
+                irq_pending =
                     TRUE;
             }
 
@@ -533,8 +530,7 @@ void system_update(void)
                     0x08
                 );
 
-
-                interrupt =
+                irq_pending =
                     TRUE;
             }
         }
@@ -544,28 +540,33 @@ void system_update(void)
 
     /*
      * ------------------------------------------
-     * Z80 interrupt
-     * ------------------------------------------
-     *
-     * Keyboard data has been placed into the
-     * emulated serial receive FIFO.
-     */
-
-    if (z80_running &&
-        interrupt)
-    {
-        z80emu_interrupt();
-    }
-
-
-    /*
-     * ------------------------------------------
-     * Z80 execution
+     * Z80
      * ------------------------------------------
      */
 
     if (z80_running)
     {
+        /*
+         * Android版:
+         *
+         * raiseInterrupt()
+         *      ↓
+         * irqPending = true
+         *      ↓
+         * 次フレーム
+         *      ↓
+         * cpu_.interrupt()
+         */
+
+        if (irq_pending)
+        {
+            irq_pending =
+                FALSE;
+
+            z80emu_interrupt();
+        }
+
+
         z80_cycles =
             Z80_CLOCK_HZ /
             SYSTEM_FRAME_HZ;
@@ -581,7 +582,6 @@ void system_update(void)
         {
             z80_clock_remainder -=
                 SYSTEM_FRAME_HZ;
-
 
             z80_cycles++;
         }
