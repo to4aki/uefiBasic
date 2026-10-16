@@ -21,3 +21,18 @@
                       ▼
                  WaitForEvent
 
+
+                   RAM
+                    │
+                    ▼
+              backbuffer
+              ┌────────┐
+clear_screen →│        │
+fill_rect    →│ 完成画面│
+cursor       →│        │
+              └────────┘
+                    │
+                 present()
+                    │
+                    ▼
+             GOP framebuffer

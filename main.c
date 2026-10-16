@@ -17,10 +17,13 @@
 static EFI_GRAPHICS_OUTPUT_PROTOCOL *gop = NULL;
 
 static UINT32 *fb = NULL;
+static UINT32 *backbuffer = NULL;
 
 static UINTN screen_w = 0;
 static UINTN screen_h = 0;
 static UINTN stride = 0;
+
+static UINTN backbuffer_size = 0;
 
 
 /* ==========================================================
@@ -77,8 +80,8 @@ static void put_pixel(
     if ((UINTN)y >= screen_h)
         return;
 
-    fb[
-        (UINTN)y * stride +
+    backbuffer[
+        (UINTN)y * screen_w +
         (UINTN)x
     ] = color;
 }
@@ -95,7 +98,7 @@ static void clear_screen(
     for (y = 0; y < screen_h; y++)
     {
         UINT32 *line =
-            fb + y * stride;
+            backbuffer + y * screen_w;
 
         for (x = 0; x < screen_w; x++)
         {
@@ -150,6 +153,24 @@ static void draw_cursor(
         3,
         21,
         color);
+}
+
+
+/* ----------------------------------------------------------
+ * Backbuffer -> GOP framebuffer
+ * ---------------------------------------------------------- */
+
+static void present(void)
+{
+    UINTN y;
+
+    for (y = 0; y < screen_h; y++)
+    {
+        CopyMem(
+            fb + y * stride,
+            backbuffer + y * screen_w,
+            screen_w * sizeof(UINT32));
+    }
 }
 
 
@@ -284,10 +305,6 @@ static void handle_pointer_input(void)
         return;
 
 
-    /* ------------------------------------------------------
-     * Absolute coordinates
-     * ------------------------------------------------------ */
-
     system_state.mouse_x =
         pointer_to_screen_x(
             state.CurrentX);
@@ -297,10 +314,6 @@ static void handle_pointer_input(void)
             state.CurrentY);
 
 
-    /* ------------------------------------------------------
-     * Buttons
-     * ------------------------------------------------------ */
-
     old_down =
         system_state.mouse_down;
 
@@ -308,10 +321,6 @@ static void handle_pointer_input(void)
     system_state.mouse_down =
         (state.ActiveButtons != 0);
 
-
-    /*
-     * Edge detection
-     */
 
     if (!old_down &&
         system_state.mouse_down)
@@ -366,22 +375,14 @@ static void handle_keyboard_input(void)
 static void system_update(void)
 {
     /*
-     * ここがゲーム/エミュレータでいう tick()。
-     *
-     * 将来:
+     * システムロジックはここへ実装する。
      *
      * CPU実行
      * UI更新
      * タイマー更新
      * デバイス更新
-     *
-     * などをここから呼ぶ。
      */
 
-
-    /*
-     * GUI click example
-     */
 
     if (system_state.mouse_pressed)
     {
@@ -391,9 +392,6 @@ static void system_update(void)
         {
             /*
              * Button clicked.
-             *
-             * 今は状態変更なし。
-             * 実際のUI処理をここに入れる。
              */
         }
     }
@@ -416,6 +414,11 @@ static void system_render(void)
     UINT32 cursor_color;
 
 
+    /*
+     * ここからの描画はすべてRAM上の
+     * backbufferに対して行われる。
+     */
+
     clear_screen(
         0x00101020);
 
@@ -435,10 +438,6 @@ static void system_render(void)
         0x00008000;
 
 
-    /*
-     * Hover
-     */
-
     if (point_in_button(
             system_state.mouse_x,
             system_state.mouse_y))
@@ -447,10 +446,6 @@ static void system_render(void)
             0x0000C000;
     }
 
-
-    /*
-     * Press
-     */
 
     if (system_state.mouse_down &&
         point_in_button(
@@ -490,6 +485,13 @@ static void system_render(void)
         system_state.mouse_x,
         system_state.mouse_y,
         cursor_color);
+
+
+    /* ------------------------------------------------------
+     * Present completed frame
+     * ------------------------------------------------------ */
+
+    present();
 }
 
 
@@ -499,11 +501,6 @@ static void system_render(void)
 
 static void system_end_frame(void)
 {
-    /*
-     * pressed / released は
-     * 1フレームだけ有効。
-     */
-
     system_state.mouse_pressed =
         FALSE;
 
@@ -586,6 +583,36 @@ efi_main(
 
 
     /* ======================================================
+     * Backbuffer
+     * ====================================================== */
+
+    backbuffer_size =
+        screen_w *
+        screen_h *
+        sizeof(UINT32);
+
+
+    backbuffer =
+        AllocatePool(
+            backbuffer_size);
+
+
+    if (backbuffer == NULL)
+    {
+        Print(
+            u"BACKBUFFER ALLOCATION FAILED\r\n");
+
+        return EFI_OUT_OF_RESOURCES;
+    }
+
+
+    SetMem(
+        backbuffer,
+        backbuffer_size,
+        0);
+
+
+    /* ======================================================
      * Absolute Pointer
      * ====================================================== */
 
@@ -604,6 +631,9 @@ efi_main(
             u"ABSOLUTE POINTER NOT FOUND: %r\r\n",
             status);
 
+        FreePool(backbuffer);
+        backbuffer = NULL;
+
         return status;
     }
 
@@ -621,6 +651,9 @@ efi_main(
         Print(
             u"POINTER RESET FAILED: %r\r\n",
             status);
+
+        FreePool(backbuffer);
+        backbuffer = NULL;
 
         return status;
     }
@@ -660,6 +693,9 @@ efi_main(
             u"TIMER CREATE FAILED: %r\r\n",
             status);
 
+        FreePool(backbuffer);
+        backbuffer = NULL;
+
         return status;
     }
 
@@ -683,6 +719,9 @@ efi_main(
             BS->CloseEvent,
             1,
             timer_event);
+
+        FreePool(backbuffer);
+        backbuffer = NULL;
 
         return status;
     }
@@ -718,28 +757,11 @@ efi_main(
      * Events
      * ====================================================== */
 
-    /*
-     * Event 0:
-     * Absolute Pointer
-     */
-
     events[0] =
         pointer->WaitForInput;
 
-
-    /*
-     * Event 1:
-     * Keyboard
-     */
-
     events[1] =
         ST->ConIn->WaitForKey;
-
-
-    /*
-     * Event 2:
-     * 60Hz system timer
-     */
 
     events[2] =
         timer_event;
@@ -773,19 +795,11 @@ efi_main(
         }
 
 
-        /* --------------------------------------------------
-         * Pointer event
-         * -------------------------------------------------- */
-
         if (event_index == 0)
         {
             handle_pointer_input();
         }
 
-
-        /* --------------------------------------------------
-         * Keyboard event
-         * -------------------------------------------------- */
 
         else if (event_index == 1)
         {
@@ -793,29 +807,11 @@ efi_main(
         }
 
 
-        /* --------------------------------------------------
-         * System tick
-         * -------------------------------------------------- */
-
         else if (event_index == 2)
         {
-            /*
-             * Update simulation / machine
-             */
-
             system_update();
 
-
-            /*
-             * Draw current state
-             */
-
             system_render();
-
-
-            /*
-             * Clear one-frame flags
-             */
 
             system_end_frame();
         }
@@ -838,6 +834,13 @@ efi_main(
         BS->CloseEvent,
         1,
         timer_event);
+
+
+    if (backbuffer != NULL)
+    {
+        FreePool(backbuffer);
+        backbuffer = NULL;
+    }
 
 
     return EFI_SUCCESS;
