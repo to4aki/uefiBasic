@@ -41,12 +41,6 @@ static void textvram_scroll(void)
     UINTN y;
 
 
-    /*
-     * Row 1 -> Row 0
-     * Row 2 -> Row 1
-     * ...
-     */
-
     for (y = 1; y < TEXT_ROWS; y++)
     {
         for (x = 0; x < TEXT_COLS; x++)
@@ -56,10 +50,6 @@ static void textvram_scroll(void)
         }
     }
 
-
-    /*
-     * Clear last row
-     */
 
     for (x = 0; x < TEXT_COLS; x++)
     {
@@ -118,7 +108,8 @@ void textvram_init(void)
 
     textvram_clear(
         current_foreground,
-        current_background);
+        current_background
+    );
 }
 
 
@@ -233,7 +224,8 @@ void textvram_put_string(
             y,
             (UINT8)*text,
             foreground,
-            background);
+            background
+        );
 
 
         x++;
@@ -308,10 +300,6 @@ void textvram_show_cursor(
 void textvram_putc(
     UINT8 character)
 {
-    /*
-     * Line Feed
-     */
-
     if (character == '\n')
     {
         textvram_newline();
@@ -319,10 +307,6 @@ void textvram_putc(
         return;
     }
 
-
-    /*
-     * Carriage Return
-     */
 
     if (character == '\r')
     {
@@ -332,46 +316,37 @@ void textvram_putc(
     }
 
 
-    /*
-     * Backspace
-     */
-
     if (character == '\b')
     {
         if (cursor_x > 0)
         {
             cursor_x--;
 
+
             textvram_put_char(
                 cursor_x,
                 cursor_y,
                 ' ',
                 current_foreground,
-                current_background);
+                current_background
+            );
         }
 
         return;
     }
 
 
-    /*
-     * Normal character
-     */
-
     textvram_put_char(
         cursor_x,
         cursor_y,
         character,
         current_foreground,
-        current_background);
+        current_background
+    );
 
 
     cursor_x++;
 
-
-    /*
-     * Automatic wrap
-     */
 
     if (cursor_x >= TEXT_COLS)
     {
@@ -394,7 +369,8 @@ void textvram_print(
     while (*text != '\0')
     {
         textvram_putc(
-            (UINT8)*text);
+            (UINT8)*text
+        );
 
         text++;
     }
@@ -403,6 +379,10 @@ void textvram_print(
 
 /* ==========================================================
  * Render one cell
+ *
+ * Direct backbuffer access.
+ *
+ * No graphics_put_pixel() calls are used here.
  * ========================================================== */
 
 static void render_cell(
@@ -412,15 +392,42 @@ static void render_cell(
     UINTN cell_y,
     const TEXT_CELL *cell)
 {
-    UINTN x;
-    UINTN y;
+    UINTN glyph_y;
+    UINTN glyph_x;
 
     INTN px;
     INTN py;
 
+    INTN screen_x;
+    INTN screen_y;
+
     UINT8 bits;
 
     const UINT8 *glyph;
+
+    UINT32 *buffer;
+    UINT32 *line;
+
+    UINTN pitch;
+    UINTN screen_width;
+    UINTN screen_height;
+
+
+    buffer =
+        graphics_backbuffer();
+
+    if (buffer == NULL)
+        return;
+
+
+    pitch =
+        graphics_backbuffer_pitch();
+
+    screen_width =
+        graphics_width();
+
+    screen_height =
+        graphics_height();
 
 
     px =
@@ -432,32 +439,80 @@ static void render_cell(
         (INTN)(cell_y * TEXT_FONT_H);
 
 
+    /*
+     * Fast rejection for cells completely outside
+     * the screen.
+     */
+
+    if (px >= (INTN)screen_width)
+        return;
+
+    if (py >= (INTN)screen_height)
+        return;
+
+    if (px + TEXT_FONT_W <= 0)
+        return;
+
+    if (py + TEXT_FONT_H <= 0)
+        return;
+
+
     glyph =
         font8x16_get(
-            cell->character);
+            cell->character
+        );
 
 
-    for (y = 0; y < TEXT_FONT_H; y++)
+    for (glyph_y = 0;
+         glyph_y < TEXT_FONT_H;
+         glyph_y++)
     {
+        screen_y =
+            py +
+            (INTN)glyph_y;
+
+
+        if (screen_y < 0)
+            continue;
+
+        if ((UINTN)screen_y >= screen_height)
+            continue;
+
+
+        line =
+            buffer +
+            ((UINTN)screen_y * pitch);
+
+
         bits =
-            glyph[y];
+            glyph[glyph_y];
 
 
-        for (x = 0; x < TEXT_FONT_W; x++)
+        for (glyph_x = 0;
+             glyph_x < TEXT_FONT_W;
+             glyph_x++)
         {
-            if (bits & (0x80 >> x))
+            screen_x =
+                px +
+                (INTN)glyph_x;
+
+
+            if (screen_x < 0)
+                continue;
+
+            if ((UINTN)screen_x >= screen_width)
+                continue;
+
+
+            if (bits & (0x80U >> glyph_x))
             {
-                graphics_put_pixel(
-                    px + (INTN)x,
-                    py + (INTN)y,
-                    cell->foreground);
+                line[(UINTN)screen_x] =
+                    cell->foreground;
             }
             else
             {
-                graphics_put_pixel(
-                    px + (INTN)x,
-                    py + (INTN)y,
-                    cell->background);
+                line[(UINTN)screen_x] =
+                    cell->background;
             }
         }
     }
@@ -495,18 +550,13 @@ static void render_cursor(
         current_foreground;
 
 
-    /*
-     * Underline cursor
-     *
-     * 8 x 2 pixels
-     */
-
     graphics_fill_rect(
         px,
         py + TEXT_FONT_H - 2,
         TEXT_FONT_W,
         2,
-        color);
+        color
+    );
 }
 
 
@@ -531,17 +581,15 @@ void textvram_render(
                 origin_y,
                 x,
                 y,
-                &vram[y][x]);
+                &vram[y][x]
+            );
         }
     }
 
 
-    /*
-     * TEXT cursor is drawn after character cells.
-     */
-
     render_cursor(
         origin_x,
-        origin_y);
+        origin_y
+    );
 }
 
