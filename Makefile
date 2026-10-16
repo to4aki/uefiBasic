@@ -141,7 +141,9 @@ $(TARGET): boot.so
 
 install: $(TARGET)
 	mkdir -p $(ESP_DIR)/EFI/BOOT
+	mkdir -p $(ESP_DIR)/Z80
 	cp $(TARGET) $(ESP_DIR)/EFI/BOOT/BOOTX64.EFI
+	cp roms/rc2014_32k.hex  $(ESP_DIR)/Z80
 
 
 # ============================================================

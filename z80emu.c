@@ -21,6 +21,25 @@
 static int cycle_debt =
     0;
 
+#define Z80_KEY_BUFFER_SIZE 64
+
+
+static UINT8 key_buffer[
+    Z80_KEY_BUFFER_SIZE
+];
+
+
+static UINTN key_read_position =
+    0;
+
+
+static UINTN key_write_position =
+    0;
+
+
+static UINTN key_count =
+    0;
+
 
 /*
  * ==========================================================
@@ -132,25 +151,53 @@ static Z80EX_BYTE cpu_in(
     Z80EX_WORD port,
     void *user_data)
 {
-    Z80EMU_CONTEXT *ctx;
+    UINT8 p;
 
 
     (void)cpu_context;
-    (void)port;
+    (void)user_data;
 
 
-    ctx =
-        (Z80EMU_CONTEXT *)user_data;
+    p =
+        (UINT8)(
+            port & 0x00FF
+        );
 
 
-    (void)ctx;
+    switch (p)
+    {
+        case 0x80:
+
+            /*
+             * bit 0 = RX data available
+             * bit 1 = TX ready
+             */
+
+            if (z80emu_key_available())
+            {
+                return 0x03;
+            }
 
 
-    /*
-     * No input device yet.
-     */
+            return 0x02;
 
-    return 0xFF;
+
+        case 0x81:
+
+            if (z80emu_key_available())
+            {
+                return
+                    z80emu_key_pop();
+            }
+
+
+            return 0x00;
+
+
+        default:
+
+            return 0x00;
+    }
 }
 
 
@@ -166,44 +213,37 @@ static void cpu_out(
     Z80EX_BYTE value,
     void *user_data)
 {
-    Z80EMU_CONTEXT *ctx;
-
-    UINT8 port_low;
+    UINT8 p;
 
 
     (void)cpu_context;
+    (void)user_data;
 
 
-    ctx =
-        (Z80EMU_CONTEXT *)user_data;
-
-
-    (void)ctx;
-
-
-    /*
-     * For now, only decode the lower 8 bits
-     * of the Z80 I/O address.
-     */
-
-    port_low =
+    p =
         (UINT8)(
-            port &
-            0x00FF
+            port & 0x00FF
         );
 
 
-    /*
-     * Port 00h
-     *
-     * Console output.
-     */
-
-    if (port_low == 0x00)
+    switch (p)
     {
-        textvram_putc(
-            (char)value
-        );
+        /*
+         * ACIA data register.
+         */
+
+        case 0x81:
+
+            textvram_putc(
+                (char)value
+            );
+
+            break;
+
+
+        default:
+
+            break;
     }
 }
 
@@ -249,10 +289,6 @@ EFI_STATUS z80emu_init(void)
     }
 
 
-    /*
-     * Clear complete Z80 memory.
-     */
-
     SetMem(
         memory,
         sizeof(memory),
@@ -260,25 +296,32 @@ EFI_STATUS z80emu_init(void)
     );
 
 
-    /*
-     * Initialize emulator context.
-     */
+    SetMem(
+        key_buffer,
+        sizeof(key_buffer),
+        0
+    );
+
+
+    key_read_position =
+        0;
+
+
+    key_write_position =
+        0;
+
+
+    key_count =
+        0;
+
 
     context.memory =
         memory;
 
 
-    /*
-     * Clear cycle correction.
-     */
-
     cycle_debt =
         0;
 
-
-    /*
-     * Create Z80Ex CPU.
-     */
 
     cpu =
         z80ex_create(
@@ -304,10 +347,6 @@ EFI_STATUS z80emu_init(void)
         return EFI_OUT_OF_RESOURCES;
     }
 
-
-    /*
-     * Reset CPU.
-     */
 
     z80ex_reset(
         cpu
@@ -357,6 +396,18 @@ void z80emu_reset(void)
 
 
     cycle_debt =
+        0;
+
+
+    key_read_position =
+        0;
+
+
+    key_write_position =
+        0;
+
+
+    key_count =
         0;
 
 
@@ -1323,4 +1374,81 @@ EFI_STATUS z80emu_load_hex(
     return EFI_SUCCESS;
 }
 
+
+void z80emu_key_input(
+    UINT8 value)
+{
+    if (key_count >=
+        Z80_KEY_BUFFER_SIZE)
+    {
+        return;
+    }
+
+
+    key_buffer[
+        key_write_position
+    ] =
+        value;
+
+
+    key_write_position++;
+
+
+    if (key_write_position >=
+        Z80_KEY_BUFFER_SIZE)
+    {
+        key_write_position =
+            0;
+    }
+
+
+    key_count++;
+}
+
+
+BOOLEAN z80emu_key_available(void)
+{
+    if (key_count != 0)
+    {
+        return TRUE;
+    }
+
+
+    return FALSE;
+}
+
+
+static UINT8 z80emu_key_pop(void)
+{
+    UINT8 value;
+
+
+    if (key_count == 0)
+    {
+        return 0;
+    }
+
+
+    value =
+        key_buffer[
+            key_read_position
+        ];
+
+
+    key_read_position++;
+
+
+    if (key_read_position >=
+        Z80_KEY_BUFFER_SIZE)
+    {
+        key_read_position =
+            0;
+    }
+
+
+    key_count--;
+
+
+    return value;
+}
 

@@ -18,6 +18,8 @@ void z80emu_interrupt(void);
 
 UINT8 *z80emu_memory(void);
 
+static UINT8 z80emu_key_pop(void);
+
 
 EFI_STATUS z80emu_load(
     const CHAR16 *path,
@@ -30,7 +32,16 @@ EFI_STATUS z80emu_load_hex(
 );
 
 
-void z80emu_test(void);
+/*
+ * Keyboard input.
+ */
+
+void z80emu_key_input(
+    UINT8 value
+);
+
+
+BOOLEAN z80emu_key_available(void);
 
 
 #endif

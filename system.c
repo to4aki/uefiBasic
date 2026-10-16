@@ -459,41 +459,122 @@ static void process_keyboard(void)
  * Update
  * ========================================================== */
 
+
 void system_update(void)
 {
+    EFI_INPUT_KEY key;
+    EFI_STATUS status;
+
     UINT32 z80_cycles;
+
+    BOOLEAN interrupt =
+        FALSE;
 
 
     /*
-     * Z80が開始されていなければ実行しない。
+     * ------------------------------------------
+     * Keyboard
+     * ------------------------------------------
+     */
+
+    do
+    {
+        status =
+            uefi_call_wrapper(
+                ST->ConIn->ReadKeyStroke,
+                2,
+                ST->ConIn,
+                &key
+            );
+
+
+        if (!EFI_ERROR(status))
+        {
+            /*
+             * Printable ASCII
+             */
+
+            if (key.UnicodeChar >= 0x20 &&
+                key.UnicodeChar <= 0x7E)
+            {
+                z80emu_key_input(
+                    (UINT8)key.UnicodeChar
+                );
+
+
+                interrupt =
+                    TRUE;
+            }
+
+
+            /*
+             * Enter
+             */
+
+            else if (key.UnicodeChar == L'\r')
+            {
+                z80emu_key_input(
+                    0x0D
+                );
+
+
+                interrupt =
+                    TRUE;
+            }
+
+
+            /*
+             * Backspace
+             */
+
+            else if (key.UnicodeChar == L'\b')
+            {
+                z80emu_key_input(
+                    0x08
+                );
+
+
+                interrupt =
+                    TRUE;
+            }
+        }
+
+    } while (!EFI_ERROR(status));
+
+
+    /*
+     * ------------------------------------------
+     * Z80 interrupt
+     * ------------------------------------------
+     *
+     * Keyboard data has been placed into the
+     * emulated serial receive FIFO.
+     */
+
+    if (z80_running &&
+        interrupt)
+    {
+        z80emu_interrupt();
+    }
+
+
+    /*
+     * ------------------------------------------
+     * Z80 execution
+     * ------------------------------------------
      */
 
     if (z80_running)
     {
-        /*
-         * 4MHzを60Hzに分配する。
-         *
-         * 4000000 / 60 = 66666 remainder 40
-         */
-
         z80_cycles =
             Z80_CLOCK_HZ /
             SYSTEM_FRAME_HZ;
 
 
-        /*
-         * 整数除算で失われる余りを累積する。
-         */
-
         z80_clock_remainder +=
             Z80_CLOCK_HZ %
             SYSTEM_FRAME_HZ;
 
-
-        /*
-         * 1 T-state分たまったら、
-         * 今回の実行量へ追加する。
-         */
 
         if (z80_clock_remainder >=
             SYSTEM_FRAME_HZ)
@@ -501,17 +582,10 @@ void system_update(void)
             z80_clock_remainder -=
                 SYSTEM_FRAME_HZ;
 
+
             z80_cycles++;
         }
 
-
-        /*
-         * Z80を指定T-state分実行する。
-         *
-         * 命令境界による超過については
-         * z80emu_run_cycles() 内の
-         * cycle_debt が補正する。
-         */
 
         z80emu_run_cycles(
             (int)z80_cycles
@@ -520,7 +594,9 @@ void system_update(void)
 
 
     /*
-     * System frame counter.
+     * ------------------------------------------
+     * Frame
+     * ------------------------------------------
      */
 
     frame_count++;
