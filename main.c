@@ -4,6 +4,7 @@
 #include "graphics.h"
 #include "input.h"
 #include "system.h"
+#include "hardware.h"
 
 
 #define FRAME_INTERVAL_100NS 166667ULL
@@ -28,7 +29,11 @@ efi_main(
     UINTN keyboard_index;
     UINTN timer_index;
 
-    BOOLEAN running =
+    BOOLEAN running;
+    BOOLEAN render_required;
+
+
+    running =
         TRUE;
 
 
@@ -38,7 +43,8 @@ efi_main(
 
     InitializeLib(
         ImageHandle,
-        SystemTable);
+        SystemTable
+    );
 
 
     /* ======================================================
@@ -53,7 +59,8 @@ efi_main(
     {
         Print(
             u"GRAPHICS INIT FAILED: %r\r\n",
-            status);
+            status
+        );
 
         return status;
     }
@@ -71,12 +78,19 @@ efi_main(
     {
         Print(
             u"INPUT INIT FAILED: %r\r\n",
-            status);
+            status
+        );
 
         graphics_shutdown();
 
         return status;
     }
+
+    /* ======================================================
+     * Hardware
+     * ====================================================== */
+
+     hardware_detect();
 
 
     /* ======================================================
@@ -98,7 +112,8 @@ efi_main(
             TPL_CALLBACK,
             NULL,
             NULL,
-            &timer_event);
+            &timer_event
+        );
 
 
     if (EFI_ERROR(status))
@@ -115,7 +130,8 @@ efi_main(
             3,
             timer_event,
             TimerPeriodic,
-            FRAME_INTERVAL_100NS);
+            FRAME_INTERVAL_100NS
+        );
 
 
     if (EFI_ERROR(status))
@@ -123,7 +139,8 @@ efi_main(
         uefi_call_wrapper(
             BS->CloseEvent,
             1,
-            timer_event);
+            timer_event
+        );
 
         graphics_shutdown();
 
@@ -136,6 +153,7 @@ efi_main(
      * ====================================================== */
 
     event_count = 0;
+
 
     simple_pointer_index =
         (UINTN)-1;
@@ -190,7 +208,7 @@ efi_main(
 
 
     /*
-     * 60Hz Timer
+     * Timer
      */
 
     timer_index =
@@ -215,13 +233,18 @@ efi_main(
 
     while (running)
     {
+        render_required =
+            FALSE;
+
+
         status =
             uefi_call_wrapper(
                 BS->WaitForEvent,
                 3,
                 event_count,
                 events,
-                &event_index);
+                &event_index
+            );
 
 
         if (EFI_ERROR(status))
@@ -238,6 +261,9 @@ efi_main(
             event_index == simple_pointer_index)
         {
             input_handle_simple_pointer();
+
+            render_required =
+                TRUE;
         }
 
 
@@ -252,6 +278,9 @@ efi_main(
             event_index == absolute_pointer_index)
         {
             input_handle_absolute_pointer();
+
+            render_required =
+                TRUE;
         }
 
 
@@ -267,12 +296,32 @@ efi_main(
         {
             running =
                 input_handle_keyboard();
+
+
+            if (running)
+            {
+                /*
+                 * Keyboard data is stored in the queue.
+                 *
+                 * Run system_update() now so the queued
+                 * characters are consumed immediately.
+                 */
+
+                system_update();
+
+                render_required =
+                    TRUE;
+            }
         }
 
 
         /*
          * --------------------------------------------------
          * System tick
+         *
+         * Timer remains the system clock.
+         *
+         * It no longer forces rendering every 16.67 ms.
          * --------------------------------------------------
          */
 
@@ -282,10 +331,37 @@ efi_main(
         {
             system_update();
 
-            system_render();
 
-            input_end_frame();
+            /*
+             * No unconditional render here.
+             *
+             * The timer remains available for future
+             * periodic system processing.
+             */
         }
+
+
+        /*
+         * --------------------------------------------------
+         * Render
+         *
+         * Rendering is still FULL FRAME.
+         * This is not dirty rectangle rendering.
+         * --------------------------------------------------
+         */
+
+        if (render_required)
+        {
+            system_render();
+        }
+
+
+        /*
+         * One-shot input states are consumed after the
+         * current event has been processed.
+         */
+
+        input_end_frame();
     }
 
 
@@ -298,13 +374,15 @@ efi_main(
         3,
         timer_event,
         TimerCancel,
-        0);
+        0
+    );
 
 
     uefi_call_wrapper(
         BS->CloseEvent,
         1,
-        timer_event);
+        timer_event
+    );
 
 
     graphics_shutdown();

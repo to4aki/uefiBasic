@@ -2,6 +2,7 @@
 #include "graphics.h"
 #include "input.h"
 #include "textvram.h"
+#include "hardware.h"
 
 
 #define BUTTON_W 200
@@ -9,6 +10,260 @@
 
 
 static UINT64 frame_count = 0;
+
+
+/* ==========================================================
+ * Print unsigned integer
+ * ========================================================== */
+
+static void print_uint64(
+    UINT64 value)
+{
+    char buffer[32];
+
+    UINTN pos;
+
+
+    if (value == 0)
+    {
+        textvram_putc(
+            '0'
+        );
+
+        return;
+    }
+
+
+    pos = 0;
+
+
+    while (value != 0 &&
+           pos < sizeof(buffer))
+    {
+        buffer[pos] =
+            (char)(
+                '0' +
+                (value % 10)
+            );
+
+        pos++;
+
+        value /=
+            10;
+    }
+
+
+    while (pos > 0)
+    {
+        pos--;
+
+        textvram_putc(
+            (UINT8)buffer[pos]
+        );
+    }
+}
+
+
+/* ==========================================================
+ * Print hardware information
+ * ========================================================== */
+
+static void print_hardware_info(void)
+{
+    const HARDWARE_INFO *hw;
+
+    UINT64 total_mb;
+    UINT64 available_mb;
+
+
+    hw =
+        hardware_info();
+
+
+    total_mb =
+        hw->memory_total_bytes /
+        (1024ULL * 1024ULL);
+
+
+    available_mb =
+        hw->memory_available_bytes /
+        (1024ULL * 1024ULL);
+
+
+    textvram_set_color(
+        0x0000FF00,
+        0x00000000
+    );
+
+
+    textvram_print(
+        "UEFI SYSTEM\n"
+    );
+
+
+    textvram_set_color(
+        0x00FFFFFF,
+        0x00000000
+    );
+
+
+    textvram_print(
+        "\nCPU\n"
+    );
+
+
+    textvram_print(
+        " Vendor   : "
+    );
+
+    textvram_print(
+        hw->cpu_vendor
+    );
+
+    textvram_putc(
+        '\n'
+    );
+
+
+    textvram_print(
+        " Brand    : "
+    );
+
+    textvram_print(
+        hw->cpu_brand
+    );
+
+    textvram_putc(
+        '\n'
+    );
+
+
+    textvram_print(
+        " Family   : "
+    );
+
+    print_uint64(
+        hw->cpu_family
+    );
+
+
+    textvram_print(
+        "\n Model    : "
+    );
+
+    print_uint64(
+        hw->cpu_model
+    );
+
+
+    textvram_print(
+        "\n Stepping : "
+    );
+
+    print_uint64(
+        hw->cpu_stepping
+    );
+
+
+    textvram_print(
+        "\n\nMEMORY\n"
+    );
+
+
+    textvram_print(
+        " Total    : "
+    );
+
+    print_uint64(
+        total_mb
+    );
+
+    textvram_print(
+        " MB\n"
+    );
+
+
+    textvram_print(
+        " Free     : "
+    );
+
+    print_uint64(
+        available_mb
+    );
+
+    textvram_print(
+        " MB\n"
+    );
+
+
+    textvram_print(
+        "\nGRAPHICS\n"
+    );
+
+
+    textvram_print(
+        " Width    : "
+    );
+
+    print_uint64(
+        graphics_width()
+    );
+
+
+    textvram_print(
+        "\n Height   : "
+    );
+
+    print_uint64(
+        graphics_height()
+    );
+
+
+    textvram_print(
+        "\n\nINPUT\n"
+    );
+
+
+    textvram_print(
+        " Simple   : "
+    );
+
+    if (input_has_simple_pointer())
+    {
+        textvram_print(
+            "YES\n"
+        );
+    }
+    else
+    {
+        textvram_print(
+            "NO\n"
+        );
+    }
+
+
+    textvram_print(
+        " Absolute : "
+    );
+
+    if (input_has_absolute_pointer())
+    {
+        textvram_print(
+            "YES\n"
+        );
+    }
+    else
+    {
+        textvram_print(
+            "NO\n"
+        );
+    }
+
+
+    textvram_print(
+        "\nREADY> "
+    );
+}
 
 
 /* ==========================================================
@@ -83,47 +338,19 @@ static void draw_cursor(
 
 void system_init(void)
 {
-    frame_count = 0;
+    frame_count =
+        0;
 
 
     textvram_init();
 
 
-    textvram_set_color(
-        0x0000FF00,
-        0x00000000
-    );
-
-
-    textvram_print(
-        "UEFI SYSTEM\n"
-    );
-
-
-    textvram_print(
-        "\n"
-    );
-
-
-    textvram_set_color(
-        0x00FFFFFF,
-        0x00000000
-    );
-
-
-    textvram_print(
-        "TEXT VRAM 80X25\n"
-    );
-
-
-    textvram_print(
-        "READY> "
-    );
+    print_hardware_info();
 }
 
 
 /* ==========================================================
- * Keyboard processing
+ * Keyboard
  * ========================================================== */
 
 static void process_keyboard(void)
@@ -133,19 +360,11 @@ static void process_keyboard(void)
     CHAR16 ch;
 
 
-    /*
-     * Process every key currently queued.
-     */
-
     while (input_get_key(&key))
     {
         ch =
             key.unicode;
 
-
-        /*
-         * Enter
-         */
 
         if (ch == '\r')
         {
@@ -157,10 +376,6 @@ static void process_keyboard(void)
         }
 
 
-        /*
-         * Backspace
-         */
-
         if (ch == '\b')
         {
             textvram_putc(
@@ -170,10 +385,6 @@ static void process_keyboard(void)
             continue;
         }
 
-
-        /*
-         * Printable ASCII
-         */
 
         if (ch >= 0x20 &&
             ch <= 0x7E)
@@ -199,16 +410,8 @@ void system_update(void)
         input_state();
 
 
-    /*
-     * Keyboard
-     */
-
     process_keyboard();
 
-
-    /*
-     * GUI
-     */
 
     if (input->mouse_pressed)
     {
@@ -249,18 +452,10 @@ void system_render(void)
         input_state();
 
 
-    /*
-     * Background
-     */
-
     graphics_clear(
         0x00101020
     );
 
-
-    /*
-     * TEXT VRAM
-     */
 
     text_x =
         ((INTN)graphics_width() -
@@ -277,10 +472,6 @@ void system_render(void)
         text_y
     );
 
-
-    /*
-     * GUI button
-     */
 
     bx =
         ((INTN)graphics_width() -
@@ -324,10 +515,6 @@ void system_render(void)
     );
 
 
-    /*
-     * Mouse cursor
-     */
-
     if (input->mouse_down)
     {
         cursor_color =
@@ -346,10 +533,6 @@ void system_render(void)
         cursor_color
     );
 
-
-    /*
-     * Present
-     */
 
     graphics_present();
 }

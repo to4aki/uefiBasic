@@ -8,6 +8,7 @@ OBJS = \
 	input.o \
 	textvram.o \
 	font8x16.o \
+	hardware.o \
 	system.o
 
 
