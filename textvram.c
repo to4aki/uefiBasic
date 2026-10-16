@@ -3,11 +3,15 @@
 #include "font8x16.h"
 
 
+/* ==========================================================
+ * TEXT VRAM
+ * ========================================================== */
+
 static TEXT_CELL vram[TEXT_ROWS][TEXT_COLS];
 
 
 /* ==========================================================
- * Init
+ * Initialize
  * ========================================================== */
 
 void textvram_init(void)
@@ -131,15 +135,12 @@ const TEXT_CELL *textvram_get_cell(
 
 
 /* ==========================================================
- * Temporary character renderer
- *
- * 本物の8x16フォントは次に追加する。
- *
- * 現段階では文字セルの背景だけ描画し、
- * TEXT VRAM -> Backbuffer の経路を確認する。
+ * Render one cell
  * ========================================================== */
 
 static void render_cell(
+    INTN origin_x,
+    INTN origin_y,
     UINTN cell_x,
     UINTN cell_y,
     const TEXT_CELL *cell)
@@ -155,15 +156,20 @@ static void render_cell(
     const UINT8 *glyph;
 
 
+    /*
+     * TEXT VRAM内部座標
+     *
+     *      +
+     * origin
+     */
+
     px =
-        (INTN)(
-            cell_x *
-            TEXT_FONT_W);
+        origin_x +
+        (INTN)(cell_x * TEXT_FONT_W);
 
     py =
-        (INTN)(
-            cell_y *
-            TEXT_FONT_H);
+        origin_y +
+        (INTN)(cell_y * TEXT_FONT_H);
 
 
     glyph =
@@ -199,10 +205,12 @@ static void render_cell(
 
 
 /* ==========================================================
- * Render
+ * Render TEXT VRAM
  * ========================================================== */
 
-void textvram_render(void)
+void textvram_render(
+    INTN origin_x,
+    INTN origin_y)
 {
     UINTN x;
     UINTN y;
@@ -213,6 +221,8 @@ void textvram_render(void)
         for (x = 0; x < TEXT_COLS; x++)
         {
             render_cell(
+                origin_x,
+                origin_y,
                 x,
                 y,
                 &vram[y][x]);

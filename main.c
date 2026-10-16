@@ -17,9 +17,16 @@ efi_main(
     EFI_STATUS status;
 
     EFI_EVENT timer_event;
-    EFI_EVENT events[3];
 
+    EFI_EVENT events[4];
+
+    UINTN event_count;
     UINTN event_index;
+
+    UINTN simple_pointer_index;
+    UINTN absolute_pointer_index;
+    UINTN keyboard_index;
+    UINTN timer_index;
 
     BOOLEAN running =
         TRUE;
@@ -41,6 +48,7 @@ efi_main(
     status =
         graphics_init();
 
+
     if (EFI_ERROR(status))
     {
         Print(
@@ -57,6 +65,7 @@ efi_main(
 
     status =
         input_init();
+
 
     if (EFI_ERROR(status))
     {
@@ -91,6 +100,7 @@ efi_main(
             NULL,
             &timer_event);
 
+
     if (EFI_ERROR(status))
     {
         graphics_shutdown();
@@ -107,6 +117,7 @@ efi_main(
             TimerPeriodic,
             FRAME_INTERVAL_100NS);
 
+
     if (EFI_ERROR(status))
     {
         uefi_call_wrapper(
@@ -121,17 +132,74 @@ efi_main(
 
 
     /* ======================================================
-     * Events
+     * Event list
      * ====================================================== */
 
-    events[0] =
-        input_pointer_event();
+    event_count = 0;
 
-    events[1] =
+    simple_pointer_index =
+        (UINTN)-1;
+
+    absolute_pointer_index =
+        (UINTN)-1;
+
+
+    /*
+     * Simple Pointer
+     */
+
+    if (input_has_simple_pointer())
+    {
+        simple_pointer_index =
+            event_count;
+
+        events[event_count] =
+            input_simple_pointer_event();
+
+        event_count++;
+    }
+
+
+    /*
+     * Absolute Pointer
+     */
+
+    if (input_has_absolute_pointer())
+    {
+        absolute_pointer_index =
+            event_count;
+
+        events[event_count] =
+            input_absolute_pointer_event();
+
+        event_count++;
+    }
+
+
+    /*
+     * Keyboard
+     */
+
+    keyboard_index =
+        event_count;
+
+    events[event_count] =
         input_keyboard_event();
 
-    events[2] =
+    event_count++;
+
+
+    /*
+     * 60Hz Timer
+     */
+
+    timer_index =
+        event_count;
+
+    events[event_count] =
         timer_event;
+
+    event_count++;
 
 
     /* ======================================================
@@ -151,7 +219,7 @@ efi_main(
             uefi_call_wrapper(
                 BS->WaitForEvent,
                 3,
-                3,
+                event_count,
                 events,
                 &event_index);
 
@@ -160,32 +228,63 @@ efi_main(
             break;
 
 
-        switch (event_index)
+        /*
+         * --------------------------------------------------
+         * Simple Pointer
+         * --------------------------------------------------
+         */
+
+        if (input_has_simple_pointer() &&
+            event_index == simple_pointer_index)
         {
-            case 0:
-
-                input_handle_pointer();
-
-                break;
+            input_handle_simple_pointer();
+        }
 
 
-            case 1:
+        /*
+         * --------------------------------------------------
+         * Absolute Pointer
+         * --------------------------------------------------
+         */
 
-                running =
-                    input_handle_keyboard();
+        else if (
+            input_has_absolute_pointer() &&
+            event_index == absolute_pointer_index)
+        {
+            input_handle_absolute_pointer();
+        }
 
-                break;
+
+        /*
+         * --------------------------------------------------
+         * Keyboard
+         * --------------------------------------------------
+         */
+
+        else if (
+            event_index ==
+            keyboard_index)
+        {
+            running =
+                input_handle_keyboard();
+        }
 
 
-            case 2:
+        /*
+         * --------------------------------------------------
+         * System tick
+         * --------------------------------------------------
+         */
 
-                system_update();
+        else if (
+            event_index ==
+            timer_index)
+        {
+            system_update();
 
-                system_render();
+            system_render();
 
-                input_end_frame();
-
-                break;
+            input_end_frame();
         }
     }
 
