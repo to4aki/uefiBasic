@@ -5,7 +5,7 @@ CC = gcc
 Z80EX_DIR = z80/z80ex
 
 Z80EX_OBJS = \
-        z80ex_core.o
+	z80ex_core.o
 
 OBJS = \
 	main.o \
@@ -20,12 +20,19 @@ OBJS = \
 	system.o
 
 Z80EX_DEFS = \
-        -DWORDS_LITTLE_ENDIAN \
-        -DZ80EX_API_REVISION=1 \
-        -DZ80EX_VERSION_MAJOR=1 \
-        -DZ80EX_VERSION_MINOR=21 \
-        -DZ80EX_RELEASE_TYPE=\"\" \
-        -DZ80EX_VERSION_STR=\"1.21\"
+	-DWORDS_LITTLE_ENDIAN \
+	-DZ80EX_API_REVISION=1 \
+	-DZ80EX_VERSION_MAJOR=1 \
+	-DZ80EX_VERSION_MINOR=21 \
+	-DZ80EX_RELEASE_TYPE=\"\" \
+	-DZ80EX_VERSION_STR=\"1.21\"
+
+
+# ============================================================
+# RC2014 ROM
+# ============================================================
+
+RC2014_ROM = roms/rc2014_32k.hex
 
 
 # ============================================================
@@ -33,9 +40,9 @@ Z80EX_DEFS = \
 # ============================================================
 
 EFI_INC = \
-        -I/usr/include/efi \
-        -I/usr/include/efi/x86_64 \
-        -Iz80/z80ex/include
+	-I/usr/include/efi \
+	-I/usr/include/efi/x86_64 \
+	-Iz80/z80ex/include
 
 CFLAGS = \
 	$(EFI_INC) \
@@ -120,6 +127,7 @@ boot.so: $(OBJS)
 		-lgnuefi \
 		-o $@
 
+
 $(TARGET): boot.so
 	objcopy \
 		-j .text \
@@ -140,10 +148,16 @@ $(TARGET): boot.so
 # ============================================================
 
 install: $(TARGET)
+	rm -rf $(ESP_DIR)
+
 	mkdir -p $(ESP_DIR)/EFI/BOOT
 	mkdir -p $(ESP_DIR)/Z80
-	cp $(TARGET) $(ESP_DIR)/EFI/BOOT/BOOTX64.EFI
-	cp roms/rc2014_32k.hex  $(ESP_DIR)/Z80
+
+	cp $(TARGET) \
+		$(ESP_DIR)/EFI/BOOT/BOOTX64.EFI
+
+	cp $(RC2014_ROM) \
+		$(ESP_DIR)/Z80/rc2014_32k.hex
 
 
 # ============================================================
@@ -171,10 +185,15 @@ run: debug
 
 kvm: $(TARGET)
 	rm -rf $(KVM_DIR)
+
 	mkdir -p $(KVM_DIR)/esp/EFI/BOOT
+	mkdir -p $(KVM_DIR)/esp/Z80
 
 	cp $(TARGET) \
 		$(KVM_DIR)/esp/EFI/BOOT/BOOTX64.EFI
+
+	cp $(RC2014_ROM) \
+		$(KVM_DIR)/esp/Z80/rc2014_32k.hex
 
 	cp "$(OVMF_CODE)" \
 		$(KVM_DIR)/OVMF_CODE.fd
@@ -193,6 +212,7 @@ kvm: $(TARGET)
 
 kvm-qcow2: $(TARGET)
 	rm -rf $(KVM_DIR)
+
 	mkdir -p $(KVM_DIR)
 
 	cp "$(OVMF_CODE)" \
@@ -234,11 +254,22 @@ kvm-qcow2: $(TARGET)
 		-i $(KVM_RAW_IMAGE)@@$(ESP_OFFSET_BYTES) \
 		::/EFI/BOOT
 
+	# Z80 directory
+	mmd \
+		-i $(KVM_RAW_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		::/Z80
+
 	# BOOTX64.EFI
 	mcopy \
 		-i $(KVM_RAW_IMAGE)@@$(ESP_OFFSET_BYTES) \
 		$(TARGET) \
 		::/EFI/BOOT/BOOTX64.EFI
+
+	# RC2014 32K ROM
+	mcopy \
+		-i $(KVM_RAW_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		$(RC2014_ROM) \
+		::/Z80/rc2014_32k.hex
 
 	# RAW -> QCOW2
 	qemu-img convert \
@@ -260,7 +291,7 @@ kvm-qcow2: $(TARGET)
 # ============================================================
 # USB boot image
 #
-# Rufus等でUSBメモリへ書き込むRAWディスクイメージ
+# Rufus etc. can write system.img directly to USB.
 #
 # system.img
 #   GPT
@@ -269,10 +300,14 @@ kvm-qcow2: $(TARGET)
 #       EFI/
 #         BOOT/
 #           BOOTX64.EFI
+#
+#       Z80/
+#         rc2014_32k.hex
 # ============================================================
 
 usb: $(TARGET)
 	rm -rf $(USB_DIR)
+
 	mkdir -p $(USB_DIR)
 
 	# 64MB RAW USB image
@@ -308,15 +343,36 @@ usb: $(TARGET)
 		-i $(USB_IMAGE)@@$(ESP_OFFSET_BYTES) \
 		::/EFI/BOOT
 
+	# Z80 directory
+	mmd \
+		-i $(USB_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		::/Z80
+
 	# BOOTX64.EFI
 	mcopy \
 		-i $(USB_IMAGE)@@$(ESP_OFFSET_BYTES) \
 		$(TARGET) \
 		::/EFI/BOOT/BOOTX64.EFI
 
+	# RC2014 32K ROM
+	mcopy \
+		-i $(USB_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		$(RC2014_ROM) \
+		::/Z80/rc2014_32k.hex
+
 	@echo
 	@echo "USB boot image created:"
 	@ls -lh $(USB_IMAGE)
+
+	@echo
+	@echo "USB image contents:"
+	@mdir \
+		-i $(USB_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		::/EFI/BOOT
+
+	@mdir \
+		-i $(USB_IMAGE)@@$(ESP_OFFSET_BYTES) \
+		::/Z80
 
 
 # ============================================================
@@ -386,5 +442,4 @@ ru: rebuild
 	rk \
 	rkq \
 	ru
-
 
