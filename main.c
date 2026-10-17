@@ -385,6 +385,8 @@ efi_main(
              * The timer remains available for future
              * periodic system processing.
              */
+             render_required =
+                 TRUE;
         }
 
 
